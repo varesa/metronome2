@@ -59,19 +59,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "metronome_hub"
+version = "2.0.0"
+dependencies = [
+ "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "metronome_lib 2.0.0",
+]
+
+[[package]]
 name = "metronome_lib"
 version = "2.0.0"
 dependencies = [
  "serde 1.0.105 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.105 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "metronome_server"
-version = "2.0.0"
-dependencies = [
- "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "metronome_lib 2.0.0",
 ]
 
 [[package]]

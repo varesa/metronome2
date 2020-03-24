@@ -1,6 +1,6 @@
 mod datatypes {
     #[derive(Clone)]
-    pub struct ServerStatistics {
+    pub struct HubStatistics {
         pub sid: String,
         pub last_rx: f64,
         pub recv: u64,
