@@ -1,3 +1,4 @@
+extern crate metronome_lib;
 mod client_lib;
 
 fn main() {

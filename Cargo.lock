@@ -55,6 +55,7 @@ name = "metronome_client"
 version = "2.0.0"
 dependencies = [
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "metronome_lib 2.0.0",
 ]
 
 [[package]]
@@ -70,6 +71,7 @@ name = "metronome_server"
 version = "2.0.0"
 dependencies = [
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "metronome_lib 2.0.0",
 ]
 
 [[package]]
