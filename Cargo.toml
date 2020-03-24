@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "metronome_lib",
+    "metronome_client",
+    "metronome_server",
+]
