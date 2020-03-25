@@ -1,19 +1,24 @@
 extern crate clap;
 extern crate metronome_lib;
+extern crate serde;
+extern crate serde_json;
+#[macro_use] extern crate serde_derive;
 use std::io::Write;
 use clap::{Arg, App};
 mod hub_lib;
 use metronome_lib::datatypes::{MetronomeMessage, WrappedMessage};
-use hub_lib::datatypes::{ServerConfig, HubStatistics, WrappedSerializedMessage, SessionStatistics};
+use hub_lib::datatypes::{ServerConfig, WrappedSerializedMessage, SessionContainer, ServerSessionStatistics};
 
 
 const SLEEP_TIME: u64 = 100;
 const TIMEOUT_SECONDS: f64 = 5.0;
 const HOLE_TIMEOUT_SECONDS: f64 = 1.0;
+const STATS_INTERVAL: f64 = 1.0;
 
 
-fn prepare_socket(addr: std::net::SocketAddr) -> std::net::UdpSocket {
+fn prepare_client_socket(addr: std::net::SocketAddr) -> std::net::UdpSocket {
     let socket: std::net::UdpSocket;
+
     match std::net::UdpSocket::bind(addr) {
         Ok(bound_socket) => {
             socket = bound_socket;
@@ -27,6 +32,25 @@ fn prepare_socket(addr: std::net::SocketAddr) -> std::net::UdpSocket {
         panic!("failed to set socket read timeout!");
     }
 
+    return socket;
+}
+
+fn prepare_stats_socket(addr: std::net::SocketAddr) -> std::net::UdpSocket {
+    let socket: std::net::UdpSocket;
+
+    match std::net::UdpSocket::bind("0.0.0.0:0") {
+        Ok(bound_socket) => {
+            socket = bound_socket;
+        },
+        Err(_) => {
+            panic!("failed to bind socket");
+        }
+    }
+
+    if let Err(e) = socket.connect(addr) {
+        panic!("failed to connect clocktower socket to {}", e);
+    }
+    
     return socket;
 }
 
@@ -96,32 +120,52 @@ fn handler_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _confi
     }
 }
 
-fn analyzer_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _config: ServerConfig, analyzer_rx: std::sync::mpsc::Receiver<MetronomeMessage>) {
-    let mut session_data: std::collections::HashMap<std::string::String, SessionStatistics> = std::collections::HashMap::new();
+fn send_stats(stats: ServerSessionStatistics, stats_socket: &std::net::UdpSocket) {
+    if let Ok(stats_json) = stats.to_json() {
+        let message_bytes = stats_json.into_bytes();
+        if let Err(e) = stats_socket.send(&message_bytes) {
+            eprintln!("failed to send statistics to clocktower: {}", e);
+        } else {
+            println!("stats send")
+        }
+    }
+}
+
+fn analyzer_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _config: ServerConfig, analyzer_rx: std::sync::mpsc::Receiver<MetronomeMessage>, stats_socket: std::net::UdpSocket) {
+    let mut session_data: std::collections::HashMap<std::string::String, SessionContainer> = std::collections::HashMap::new();
     while running.load(std::sync::atomic::Ordering::Relaxed) {
         if let Ok(message) = analyzer_rx.recv_timeout(std::time::Duration::from_millis(SLEEP_TIME)) {
             let current_time = metronome_lib::util::get_timestamp();
             if let Some(existing_session_statistics) = session_data.get_mut(&message.sid) {
-                let session_statistics: &mut SessionStatistics;
+                let session_statistics: &mut SessionContainer;
                 session_statistics = existing_session_statistics;
-                session_statistics.received_messages += 1;
                 session_statistics.seq_analyze(message.seq, current_time);
             } else {
-                session_data.insert(message.sid.clone(), SessionStatistics::new(message.seq, current_time));
+                session_data.insert(message.sid.clone(), SessionContainer::new(message.seq, current_time));
             }
         }
         
         let mut remove_items: Vec<std::string::String> = Vec::new();
-        for (session_key, session_stats) in session_data.iter_mut() {
+        for (session_key, session_container) in session_data.iter_mut() {
             let current_time = metronome_lib::util::get_timestamp();
             let session_deadline = current_time - TIMEOUT_SECONDS;
             let hole_deadline = current_time - HOLE_TIMEOUT_SECONDS;
-            if session_stats.last_rx < session_deadline {
+            let stats_deadline = current_time - STATS_INTERVAL;
+            session_container.prune_holes(hole_deadline);
+
+            if session_container.last_rx < session_deadline {
+                session_container.last_stats = current_time;
+                send_stats(ServerSessionStatistics::from_session_container(session_key, session_container), &stats_socket);
                 remove_items.push(session_key.clone());
+            } else {
+                if session_container.last_stats < stats_deadline {
+                    session_container.last_stats = current_time;
+                    send_stats(ServerSessionStatistics::from_session_container(session_key, session_container), &stats_socket);
+                }
             }
-            session_stats.prune_holes(hole_deadline);
         }
         for remove_item in remove_items.iter() {
+            println!("DD");
             session_data.remove(remove_item);
         }
 
@@ -161,7 +205,8 @@ fn main() {
         clocktower: matches.value_of("clocktower").unwrap().parse().unwrap(),
     };
 
-    let socket = prepare_socket(config.bind);
+    let socket = prepare_client_socket(config.bind);
+    let stats_socket = prepare_stats_socket(config.clocktower);
     let running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
 
     let (receiver_tx, handler_receiver_rx) = std::sync::mpsc::channel();
@@ -192,7 +237,7 @@ fn main() {
     });
 
     let analyzer_thd = std::thread::spawn(move || {
-        analyzer_thread(running_analyzer, config_analyzer, analyzer_rx)
+        analyzer_thread(running_analyzer, config_analyzer, analyzer_rx, stats_socket)
     });
 
     receiver_thd.join().unwrap();
