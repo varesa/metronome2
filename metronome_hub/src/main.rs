@@ -66,8 +66,13 @@ fn responder_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _con
 fn handler_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _config: ServerConfig, handler_receiver_rx: std::sync::mpsc::Receiver<WrappedMessage>, handler_responder_tx: std::sync::mpsc::Sender<WrappedSerializedMessage>, handler_analyzer_tx: std::sync::mpsc::Sender<MetronomeMessage>) {
     while running.load(std::sync::atomic::Ordering::Relaxed) {
         if let Ok(wrapped_message) = handler_receiver_rx.recv_timeout(std::time::Duration::from_millis(SLEEP_TIME)) {
+            if wrapped_message.message.mode != "ping" {
+                continue;
+            }
+
             let original_message = wrapped_message.message.clone();
             let response = wrapped_message.message.get_pong();
+            
             match response.as_vec() {
                 Ok(serialized) => {
                     if let Err(e) = handler_responder_tx.send(WrappedSerializedMessage {
