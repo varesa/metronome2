@@ -9,3 +9,8 @@ edition = "2018"
 [dependencies]
 serde = "*"
 serde_derive = "*"
+rmp = "*"
+rmpv = "*"
+rmp-serde = "*"
+rmp-serialize = "*"
+time = "*"

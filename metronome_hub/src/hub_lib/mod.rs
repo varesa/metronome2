@@ -1,4 +1,4 @@
-mod datatypes {
+pub mod datatypes {
     #[derive(Clone)]
     pub struct HubStatistics {
         pub sid: String,
@@ -11,5 +11,11 @@ mod datatypes {
     pub struct ServerConfig {
         pub bind: std::net::SocketAddr,
         pub key: String,
+        pub clocktower: std::net::SocketAddr,
+    }
+
+    pub struct WrappedSerializedMessage {
+        pub addr: std::net::SocketAddr,
+        pub serialized_message: Vec<u8>
     }
 }
