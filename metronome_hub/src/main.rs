@@ -1,12 +1,15 @@
 extern crate clap;
 extern crate metronome_lib;
+use std::io::Write;
 use clap::{Arg, App};
 mod hub_lib;
 use metronome_lib::datatypes::{MetronomeMessage, WrappedMessage};
-use hub_lib::datatypes::{ServerConfig, HubStatistics, WrappedSerializedMessage};
+use hub_lib::datatypes::{ServerConfig, HubStatistics, WrappedSerializedMessage, SessionStatistics};
 
 
 const SLEEP_TIME: u64 = 100;
+const TIMEOUT_SECONDS: f64 = 5.0;
+const HOLE_TIMEOUT_SECONDS: f64 = 1.0;
 
 
 fn prepare_socket(addr: std::net::SocketAddr) -> std::net::UdpSocket {
@@ -94,10 +97,35 @@ fn handler_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _confi
 }
 
 fn analyzer_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _config: ServerConfig, analyzer_rx: std::sync::mpsc::Receiver<MetronomeMessage>) {
+    let mut session_data: std::collections::HashMap<std::string::String, SessionStatistics> = std::collections::HashMap::new();
     while running.load(std::sync::atomic::Ordering::Relaxed) {
-        if let Ok(_message) = analyzer_rx.recv_timeout(std::time::Duration::from_millis(SLEEP_TIME)) {
-
+        if let Ok(message) = analyzer_rx.recv_timeout(std::time::Duration::from_millis(SLEEP_TIME)) {
+            let current_time = metronome_lib::util::get_timestamp();
+            if let Some(existing_session_statistics) = session_data.get_mut(&message.sid) {
+                let session_statistics: &mut SessionStatistics;
+                session_statistics = existing_session_statistics;
+                session_statistics.received_messages += 1;
+                session_statistics.seq_analyze(message.seq, current_time);
+            } else {
+                session_data.insert(message.sid.clone(), SessionStatistics::new(message.seq, current_time));
+            }
         }
+        
+        let mut remove_items: Vec<std::string::String> = Vec::new();
+        for (session_key, session_stats) in session_data.iter_mut() {
+            let current_time = metronome_lib::util::get_timestamp();
+            let session_deadline = current_time - TIMEOUT_SECONDS;
+            let hole_deadline = current_time - HOLE_TIMEOUT_SECONDS;
+            if session_stats.last_rx < session_deadline {
+                remove_items.push(session_key.clone());
+            }
+            session_stats.prune_holes(hole_deadline);
+        }
+        for remove_item in remove_items.iter() {
+            session_data.remove(remove_item);
+        }
+
+        std::io::stdout().flush().unwrap();
     }
 }
 
