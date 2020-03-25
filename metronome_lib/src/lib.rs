@@ -4,7 +4,7 @@ extern crate rmp_serde;
 extern crate time;
 
 pub mod datatypes {
-    #[derive(Debug, PartialEq, Deserialize, Serialize)]
+    #[derive(Debug, PartialEq, Deserialize, Serialize, Clone)]
     pub struct MetronomeMessage {
         pub mode: String,
         pub payload: Option<String>,

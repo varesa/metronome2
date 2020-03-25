@@ -63,9 +63,10 @@ fn responder_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _con
     }
 }
 
-fn handler_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: ServerConfig, handler_receiver_rx: std::sync::mpsc::Receiver<WrappedMessage>, handler_responder_tx: std::sync::mpsc::Sender<WrappedSerializedMessage>, handler_analyzer_tx: std::sync::mpsc::Sender<WrappedMessage>) {
+fn handler_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _config: ServerConfig, handler_receiver_rx: std::sync::mpsc::Receiver<WrappedMessage>, handler_responder_tx: std::sync::mpsc::Sender<WrappedSerializedMessage>, handler_analyzer_tx: std::sync::mpsc::Sender<MetronomeMessage>) {
     while running.load(std::sync::atomic::Ordering::Relaxed) {
         if let Ok(wrapped_message) = handler_receiver_rx.recv_timeout(std::time::Duration::from_millis(SLEEP_TIME)) {
+            let original_message = wrapped_message.message.clone();
             let response = wrapped_message.message.get_pong();
             match response.as_vec() {
                 Ok(serialized) => {
@@ -73,21 +74,23 @@ fn handler_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config
                         addr: wrapped_message.addr,
                         serialized_message: serialized
                     }) {
-                        eprintln!("failed to send WrappedSerializedMessage to sender: {}", e)
+                        eprintln!("failed to send WrappedSerializedMessage to sender: {}", e);
                     }
-
+                    if let Err(e) = handler_analyzer_tx.send(original_message) {
+                        eprintln!("failed to send MetronomeMessage to analyzer: {}", e);
+                    }
                 },
                 Err(e) => {
-                    eprintln!("failed to serialize MetronomeMessage for transmission: {}", e)
+                    eprintln!("failed to serialize MetronomeMessage for transmission: {}", e);
                 }
             }
         }
     }
 }
 
-fn analyzer_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: ServerConfig, analyzer_rx: std::sync::mpsc::Receiver<WrappedMessage>) {
+fn analyzer_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _config: ServerConfig, analyzer_rx: std::sync::mpsc::Receiver<MetronomeMessage>) {
     while running.load(std::sync::atomic::Ordering::Relaxed) {
-        if let Ok(message) = analyzer_rx.recv_timeout(std::time::Duration::from_millis(SLEEP_TIME)) {
+        if let Ok(_message) = analyzer_rx.recv_timeout(std::time::Duration::from_millis(SLEEP_TIME)) {
 
         }
     }
