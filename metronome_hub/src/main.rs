@@ -6,8 +6,8 @@ extern crate serde_json;
 use std::io::Write;
 use clap::{Arg, App};
 mod hub_lib;
-use metronome_lib::datatypes::{MetronomeMessage, WrappedMessage};
-use hub_lib::datatypes::{ServerConfig, WrappedSerializedMessage, SessionContainer, ServerSessionStatistics};
+use metronome_lib::datatypes::{MetronomeMessage, WrappedMessage, SessionContainer};
+use hub_lib::datatypes::{ServerConfig, WrappedSerializedMessage, ServerSessionStatistics};
 
 
 const SLEEP_TIME: u64 = 100;
@@ -48,7 +48,7 @@ fn prepare_stats_socket(addr: std::net::SocketAddr) -> std::net::UdpSocket {
     }
 
     if let Err(e) = socket.connect(addr) {
-        panic!("failed to connect clocktower socket to {}", e);
+        panic!("failed to connect clocktower socket to {}: {}", addr, e);
     }
     
     return socket;
@@ -193,7 +193,7 @@ fn main() {
                 .short("c")
                 .long("clocktower")
                 .takes_value(true)
-                .default_value("0.0.0.0:9150")
+                .required(true)
         )
         .get_matches();
     

@@ -9,3 +9,6 @@ edition = "2018"
 [dependencies]
 metronome_lib = { path = "../metronome_lib" }
 clap = "*"
+serde = "*"
+serde_json = "*"
+serde_derive = "*"
