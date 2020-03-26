@@ -16,78 +16,217 @@ args = parser.parse_args()
 
 SESSION_TIMEOUT = 10.0
 
-sessions = {}
-sessions_lock = threading.Lock()
+hub_sessions = {}
+hub_sessions_lock = threading.Lock()
+client_sessions = {}
+client_sessions_lock = threading.Lock()
 msglistener = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 msglistener.bind((args.bind_address, args.bind_port))
 
 
 class CustomCollector(object):
     def collect(self):
-        rxmsg = CounterMetricFamily(
-            'metronome_server_received_messages',
-            'Messages received by the metronome server',
+        global hub_sessions
+        global hub_sessions_lock
+        global client_sessions
+        global client_sessions_lock
+
+        hub_received_messages = CounterMetricFamily(
+            'metronome_hub_received_messages',
+            'Messages received by the metronome hub',
             labels=['sid']
         )
-        holes_created = CounterMetricFamily(
-            'metronome_server_holes_created',
+        hub_holes_created = CounterMetricFamily(
+            'metronome_hub_holes_created',
             'Holes created within session',
             labels=['sid']
         )
-        holes_closed = CounterMetricFamily(
-            'metronome_server_holes_closed',
+        hub_holes_closed = CounterMetricFamily(
+            'metronome_hub_holes_closed',
             'Holes closed within session',
             labels=['sid']
         )
-        holes_timed_out = CounterMetricFamily(
-            'metronome_server_holes_timed_out',
+        hub_holes_timed_out = CounterMetricFamily(
+            'metronome_hub_holes_timed_out',
             'Holes timed out within session',
             labels=['sid']
         )
-        holes_current = GaugeMetricFamily(
-            'metronome_server_holes_current',
+        hub_holes_current = GaugeMetricFamily(
+            'metronome_hub_holes_current',
             'Current holes within session',
             labels=['sid']
         )
+        hub_payload_bytes = CounterMetricFamily(
+            'metronome_hub_received_bytes',
+            'Payload bytes received by the hub',
+            labels=['sid']
+        )
 
-        for sid, session_info in sessions.items():
-            rxmsg.add_metric([sid], session_info.get('received_messages'), timestamp=session_info.get('timestamp'))
-            holes_created.add_metric([sid], session_info.get('holes_created'), timestamp=session_info.get('timestamp'))
-            holes_closed.add_metric([sid], session_info.get('holes_closed'), timestamp=session_info.get('timestamp'))
-            holes_timed_out.add_metric([sid], session_info.get('holes_timed_out'), timestamp=session_info.get('timestamp'))
-            holes_current.add_metric([sid], session_info.get('holes_current'), timestamp=session_info.get('timestamp'))
+        client_unexpected_increments = CounterMetricFamily(
+            'metronome_client_seq_unexpected_increment',
+            'Unexpected sequence number increments',
+            labels=['sid']
+        )
+        client_unexpected_decrements = CounterMetricFamily(
+            'metronome_client_seq_unexpected_decrement',
+            'Unexpected sequence number decrements',
+            labels=['sid']
+        )
+        client_sent_messages = CounterMetricFamily(
+            'metronome_client_sent_messages',
+            'Messages sent by the metronome client',
+            labels=['sid']
+        )
+        client_received_messages = CounterMetricFamily(
+            'metronome_client_received_messages',
+            'Messages received by the metronome client',
+            labels=['sid']
+        )
+        client_timely_received_messages = CounterMetricFamily(
+            'metronome_client_timely_received_messages',
+            'Timely messages received by the metronome client',
+            labels=['sid']
+        )
+        client_lost_messages = CounterMetricFamily(
+            'metronome_client_lost_messages',
+            'Messages lost',
+            labels=['sid']
+        )
+        client_inflight_messages = GaugeMetricFamily(
+            'metronome_client_inflight_messages',
+            'Current messages in-flight',
+            labels=['sid']
+        )
+        client_rtt_worst_seconds = GaugeMetricFamily(
+            'metronome_client_rtt_worst',
+            'Worst RTT seen by client',
+            labels=['sid']
+        )
+        client_rtt_best_seconds = GaugeMetricFamily(
+            'metronome_client_rtt_best',
+            'Worst RTT seen by client',
+            labels=['sid']
+        )
+        client_rtt_mavg_seconds = GaugeMetricFamily(
+            'metronome_client_rtt_mavg',
+            'Moving average of RTT',
+            labels=['sid']
+        )
 
-        yield rxmsg
-        yield holes_created
-        yield holes_closed
-        yield holes_timed_out
-        yield holes_current
+        with hub_sessions_lock:
+            for sid, session_info in hub_sessions.items():
+                hub_received_messages.add_metric(
+                    [sid], session_info.get('received_messages'), timestamp=session_info.get('timestamp')
+                )
+                hub_holes_created.add_metric(
+                    [sid], session_info.get('holes_created'), timestamp=session_info.get('timestamp')
+                )
+                hub_holes_closed.add_metric(
+                    [sid], session_info.get('holes_closed'), timestamp=session_info.get('timestamp')
+                )
+                hub_holes_timed_out.add_metric(
+                    [sid], session_info.get('holes_timed_out'), timestamp=session_info.get('timestamp')
+                )
+                hub_holes_current.add_metric(
+                    [sid], session_info.get('holes_current'), timestamp=session_info.get('timestamp')
+                )
+                hub_payload_bytes.add_metric(
+                    [sid], session_info.get('received_bytes'), timestamp=session_info.get('timestamp')
+                )
+
+        with client_sessions_lock:
+            for sid, session_info in client_sessions.items():
+                client_unexpected_increments.add_metric(
+                    [sid], session_info.get('seq_unexpected_increment'), timestamp=session_info.get('timestamp')
+                )
+                client_unexpected_decrements.add_metric(
+                    [sid], session_info.get('seq_unexpected_decrement'), timestamp=session_info.get('timestamp')
+                )
+                client_sent_messages.add_metric(
+                    [sid], session_info.get('sent_messages'), timestamp=session_info.get('timestamp')
+                )
+                client_received_messages.add_metric(
+                    [sid], session_info.get('received_messages'), timestamp=session_info.get('timestamp')
+                )
+                client_timely_received_messages.add_metric(
+                    [sid], session_info.get('timely_received_messages'), timestamp=session_info.get('timestamp')
+                )
+                client_lost_messages.add_metric(
+                    [sid], session_info.get('lost_messages'), timestamp=session_info.get('timestamp')
+                )
+                client_inflight_messages.add_metric(
+                    [sid], session_info.get('inflight_messages'), timestamp=session_info.get('timestamp')
+                )
+                client_rtt_worst_seconds.add_metric(
+                    [sid], session_info.get('rtt_worst'), timestamp=session_info.get('timestamp')
+                )
+                client_rtt_best_seconds.add_metric(
+                    [sid], session_info.get('rtt_best'), timestamp=session_info.get('timestamp')
+                )
+                client_rtt_mavg_seconds.add_metric(
+                    [sid], session_info.get('rtt_mavg'), timestamp=session_info.get('timestamp')
+                )
+
+        yield hub_received_messages
+        yield hub_holes_created
+        yield hub_holes_closed
+        yield hub_holes_timed_out
+        yield hub_holes_current
+
+        yield client_unexpected_increments
+        yield client_unexpected_decrements
+        yield client_sent_messages
+        yield client_received_messages
+        yield client_timely_received_messages
+        yield client_lost_messages
+        yield client_inflight_messages
+        yield client_rtt_worst_seconds
+        yield client_rtt_best_seconds
+        yield client_rtt_mavg_seconds
 
 
-def inject_server_session_statistics(payload):
-    global sessions
-    global sessions_lock
-
+def inject_client_session_statistics(payload):
+    global client_sessions
+    global client_sessions_lock
     sid = payload.get('sid')
-    with sessions_lock:
-        print(payload)
-        sessions[sid] = payload
+    with client_sessions_lock:
+        print(json.dumps(payload))
+        client_sessions[sid] = payload
+
+
+def inject_hub_session_statistics(payload):
+    global hub_sessions
+    global hub_sessions_lock
+    sid = payload.get('sid')
+    with hub_sessions_lock:
+        print(json.dumps(payload))
+        hub_sessions[sid] = payload
 
 
 def cleanup_sessions():
-    global sessions
-    global sessions_lock
+    global hub_sessions
+    global hub_sessions_lock
+    global client_sessions
+    global client_sessions_lock
 
     while True:
         current_time = time.time()
-        remove_list = []
-        with sessions_lock:
-            for sid, session in sessions.items():
+        with client_sessions_lock:
+            remove_list = []
+            for sid, session in client_sessions.items():
                 age = current_time - session.get('timestamp')
                 if age > SESSION_TIMEOUT:
                     remove_list.append(sid)
             for sid in remove_list:
-                del sessions[sid]
+                del client_sessions[sid]
+        with hub_sessions_lock:
+            remove_list = []
+            for sid, session in hub_sessions.items():
+                age = current_time - session.get('timestamp')
+                if age > SESSION_TIMEOUT:
+                    remove_list.append(sid)
+            for sid in remove_list:
+                del hub_sessions[sid]
         time.sleep(1)
 
 
@@ -98,8 +237,10 @@ def main():
     while True:
         try:
             payload = json.loads(msglistener.recv(4096).decode('ascii', errors='ignore'))
-            if payload.get('clocktower_type') == 'server_session_statistics':
-                inject_server_session_statistics(payload)
+            if payload.get('clocktower_type') == 'hub_session_statistics':
+                inject_hub_session_statistics(payload)
+            if payload.get('clocktower_type') == 'client_session_statistics':
+                inject_client_session_statistics(payload)
         except json.decoder.JSONDecodeError:
             pass
 

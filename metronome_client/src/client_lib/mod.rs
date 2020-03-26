@@ -117,9 +117,9 @@ pub mod datatypes {
             }
             
             if let Some(rtt_best) = self.rtt_best {
-                self.rtt_worst = Some(rtt_best.min(rtt));
+                self.rtt_best = Some(rtt_best.min(rtt));
             } else {
-                self.rtt_worst = Some(rtt);
+                self.rtt_best = Some(rtt);
             }
 
             if let Some(rtt_mavg) = self.rtt_mavg {

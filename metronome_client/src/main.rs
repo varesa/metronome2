@@ -51,7 +51,6 @@ fn tx_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: Cli
     let mut pps_sleeptime: f64;
     while running.load(std::sync::atomic::Ordering::Relaxed) {
         pps_sleeptime = 1.0/(*target_pps.latest() as f64);
-
         let current_time = metronome_lib::util::get_timestamp();
         if current_time >= next_tx_at {
             msg.seq = msg_seq;
@@ -74,8 +73,8 @@ fn tx_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: Cli
                     eprintln!("failed to serialize MetronomeMessage for transmission: {}", e);
                 }
             }
+            next_tx_at = current_time + pps_sleeptime;
         }
-        next_tx_at = current_time + pps_sleeptime;
         if config.use_sleep {
             // Fixme
             let sleeptime = std::time::Duration::from_micros(100);
@@ -139,6 +138,7 @@ fn stats_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: 
             stats.incoming(timestamped_message.timestamp, message.seq);
             if let Some(rtt_measurement) = tracker.get(&message.seq) {
                 stats.rtt_success(rtt_measurement.timestamp, timestamped_message.timestamp);
+                tracker.remove(&message.seq);
             }
             something_done = true;
         }
@@ -158,7 +158,6 @@ fn stats_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: 
             }
             last_scan = current_timestamp;
             something_done = true;
-
             send_stats(ClientSessionStatistics::from_session_tracker(current_timestamp, &config.sid, &stats), &clocktower_socket);
         }
 

@@ -39,7 +39,7 @@ pub mod datatypes {
     impl ServerSessionStatistics {
         pub fn from_session_container(sid: &std::string::String, session_container: &metronome_lib::datatypes::SessionContainer) -> ServerSessionStatistics {
             return ServerSessionStatistics {
-                clocktower_type: "server_session_statistics".to_string(),
+                clocktower_type: "hub_session_statistics".to_string(),
                 sid: sid.clone(),
                 timestamp: session_container.last_rx,
                 received_messages: session_container.received_messages,

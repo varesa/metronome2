@@ -106,12 +106,12 @@ pub mod datatypes {
             self.received_messages += 1;
             self.last_rx = current_time;
             self.received_bytes += size as u64;
-            if seq == (self.last_seq + 1) {
+            if seq == (self.last_seq + 1) || seq == 0 {
                 self.last_seq = seq;
             } else if self.holes.contains_key(&seq) {
                 self.holes_closed += 1;
                 self.holes.remove(&seq);
-            } else {
+            } else if seq > self.last_seq {
                 let start = self.last_seq + 1;
                 let end = seq - 1;
                 for i in start..=end {
