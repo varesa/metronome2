@@ -125,8 +125,6 @@ fn send_stats(stats: ServerSessionStatistics, stats_socket: &std::net::UdpSocket
         let message_bytes = stats_json.into_bytes();
         if let Err(e) = stats_socket.send(&message_bytes) {
             eprintln!("failed to send statistics to clocktower: {}", e);
-        } else {
-            println!("stats send")
         }
     }
 }
