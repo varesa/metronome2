@@ -3,7 +3,6 @@ extern crate metronome_lib;
 extern crate serde;
 extern crate serde_json;
 #[macro_use] extern crate serde_derive;
-use std::io::Write;
 use clap::{Arg, App};
 mod hub_lib;
 use metronome_lib::datatypes::{MetronomeMessage, MessageWithSize, OriginInfoMessage, SessionContainer};
