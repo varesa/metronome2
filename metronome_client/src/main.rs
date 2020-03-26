@@ -5,11 +5,13 @@ extern crate serde_json;
 extern crate single_value_channel;
 #[macro_use] extern crate serde_derive;
 use clap::{Arg, App};
-use client_lib::datatypes::{ClientConfig, ClientSessionTracker, RTTMeasurement};
-use metronome_lib::datatypes::{MetronomeMessage, TimestampedMessage, SessionContainer, MessageWithSize};
+use client_lib::datatypes::{ClientConfig, ClientSessionTracker, RTTMeasurement, ClientSessionStatistics};
+use metronome_lib::datatypes::{MetronomeMessage, TimestampedMessage, MessageWithSize};
 mod client_lib;
 
 const SLEEP_TIME: u64 = 100;
+const TIMEOUT_SECONDS: f64 = 5.0;
+const STATS_SCAN_SECONDS: f64 = 1.0;
 
 fn prepare_connect_socket(addr: std::net::SocketAddr) -> std::net::UdpSocket {
     let socket: std::net::UdpSocket;
@@ -109,17 +111,60 @@ fn rx_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: Cli
     }
 }
 
-fn stats_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _config: ClientConfig, clocktower_socket: std::net::UdpSocket, tx_stats_rx: std::sync::mpsc::Receiver<RTTMeasurement>, rx_stats_rx: std::sync::mpsc::Receiver<TimestampedMessage>, pps_updater: single_value_channel::Updater<u64>) {
+fn send_stats(stats: ClientSessionStatistics, clocktower_socket: &std::net::UdpSocket) {
+    if let Ok(stats_json) = stats.to_json() {
+        let message_bytes = stats_json.into_bytes();
+        if let Err(e) = clocktower_socket.send(&message_bytes) {
+            eprintln!("failed to send statistics to clocktower: {}", e);
+        }
+    }
+}
+
+fn stats_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: ClientConfig, clocktower_socket: std::net::UdpSocket, tx_stats_rx: std::sync::mpsc::Receiver<RTTMeasurement>, rx_stats_rx: std::sync::mpsc::Receiver<TimestampedMessage>, _pps_updater: single_value_channel::Updater<u64>) {
     let mut tracker: std::collections::HashMap<u64, RTTMeasurement> = std::collections::HashMap::new();
     let mut stats: ClientSessionTracker = ClientSessionTracker::new();
+    let mut last_scan: f64 = 0.0;
+    let mut something_done: bool;
     while running.load(std::sync::atomic::Ordering::Relaxed) {
+        something_done = false;
+
         if let Ok(rtt_measurement) = tx_stats_rx.try_recv() {
             stats.outgoing(rtt_measurement.timestamp);
             tracker.insert(rtt_measurement.seq, rtt_measurement);
+            something_done = true;
         }
+
         if let Ok(timestamped_message) = rx_stats_rx.try_recv() {
             let message = &timestamped_message.message_with_size.message;
             stats.incoming(timestamped_message.timestamp, message.seq);
+            if let Some(rtt_measurement) = tracker.get(&message.seq) {
+                stats.rtt_success(rtt_measurement.timestamp, timestamped_message.timestamp);
+            }
+            something_done = true;
+        }
+
+        let current_timestamp = metronome_lib::util::get_timestamp();
+        if last_scan < (current_timestamp - STATS_SCAN_SECONDS) {
+            let deadline = current_timestamp - TIMEOUT_SECONDS;
+            let mut delete_list: Vec<u64> = Vec::new();
+            for (seq, rtt_measurement) in tracker.iter() {
+                if rtt_measurement.timestamp < deadline {
+                    delete_list.push(*seq);
+                }
+            }
+            for seq in delete_list.iter() {
+                tracker.remove(seq);
+                stats.rtt_timeout();
+            }
+            last_scan = current_timestamp;
+            something_done = true;
+
+            send_stats(ClientSessionStatistics::from_session_tracker(current_timestamp, &config.sid, &stats), &clocktower_socket);
+        }
+
+        if !something_done {
+            let sleeptime = std::time::Duration::from_micros(1000);
+            std::thread::sleep(sleeptime);
         }
     }
 }

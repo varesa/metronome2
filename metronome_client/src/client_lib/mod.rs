@@ -1,19 +1,27 @@
 pub mod datatypes {
-    #[derive(Clone)]
+    #[derive(Serialize)]
     pub struct ClientSessionStatistics {
         pub clocktower_type: std::string::String,
 
         pub sid: std::string::String,
         pub timestamp: f64,
+
+        pub seq_unexpected_increment: u64,
+        pub seq_unexpected_decrement: u64,
+
         pub sent_messages: u64,
         pub received_messages: u64,
-        pub unexpected_seq: u64,
-        pub packets_lost: u64,
-        pub packets_inflight: u64,
+        pub timely_received_messages: u64,
+        
+        pub lost_messages: u64,
+        pub inflight_messages: u64,
 
-        pub rtt_worst: f64,
-        pub rtt_best: f64,
-        pub rtt_mavg: f64,
+        #[serde(skip_serializing_if="Option::is_none")]
+        pub rtt_worst: Option<f64>,
+        #[serde(skip_serializing_if="Option::is_none")]
+        pub rtt_best: Option<f64>,
+        #[serde(skip_serializing_if="Option::is_none")]
+        pub rtt_mavg: Option<f64>,
     }
 
     pub struct ClientSessionTracker {
@@ -71,7 +79,8 @@ pub mod datatypes {
         }
 
         pub fn incoming(&mut self, timestamp: f64, seq: u64,) {
-            if let Some(last_rx_seq) = self.last_rx_seq {
+            self.last_rx = Some(timestamp);
+            if self.last_rx_seq.is_some() {
                 if seq == self.next_expected_seq {
                     // All good, we are receiving the frame we though we were going to get
                 } else if seq > self.next_expected_seq && seq < (self.max_seq + 1) {
@@ -96,9 +105,56 @@ pub mod datatypes {
             self.lost_messages += 1;
         }
 
-        pub fn rtt_success(&mut self) {
+        pub fn rtt_success(&mut self, sent: f64, recv: f64) {
             self.inflight_messages -= 1;
             self.timely_received_messages += 1;
+            let rtt = recv - sent;
+            
+            if let Some(rtt_worst) = self.rtt_worst {
+                self.rtt_worst = Some(rtt_worst.max(rtt));
+            } else {
+                self.rtt_worst = Some(rtt);
+            }
+            
+            if let Some(rtt_best) = self.rtt_best {
+                self.rtt_worst = Some(rtt_best.min(rtt));
+            } else {
+                self.rtt_worst = Some(rtt);
+            }
+
+            if let Some(rtt_mavg) = self.rtt_mavg {
+                self.rtt_mavg = Some((rtt_mavg * 9.0 + rtt) / 10.0);
+            } else {
+                self.rtt_mavg = Some(rtt);
+            }
+        }
+    }
+
+    impl ClientSessionStatistics {
+        pub fn from_session_tracker(timestamp: f64, sid: &std::string::String, st: &ClientSessionTracker) -> ClientSessionStatistics {
+            return ClientSessionStatistics {
+                clocktower_type: "client_session_statistics".to_string(),
+                sid: sid.clone(),
+                timestamp: timestamp,
+                
+                seq_unexpected_decrement: st.seq_unexpected_decrement,
+                seq_unexpected_increment: st.seq_unexpected_increment,
+
+                sent_messages: st.sent_messages,
+                received_messages: st.received_messages,
+                timely_received_messages: st.timely_received_messages,
+
+                lost_messages: st.lost_messages,
+                inflight_messages: st.inflight_messages,
+
+                rtt_worst: st.rtt_worst,
+                rtt_best: st.rtt_best,
+                rtt_mavg: st.rtt_mavg,
+            }
+        }
+
+        pub fn to_json(self) -> Result<std::string::String, serde_json::Error> {
+            return serde_json::to_string(&self);
         }
     }
 
