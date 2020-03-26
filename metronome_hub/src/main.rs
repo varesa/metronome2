@@ -144,7 +144,7 @@ fn analyzer_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _conf
                 session_statistics = existing_session_statistics;
                 session_statistics.seq_analyze(message_with_size.message.seq, message_with_size.message_raw_size, current_time);
             } else {
-                session_data.insert(message_with_size.message.sid.clone(), SessionContainer::new(message_with_size.message.seq, current_time));
+                session_data.insert(message_with_size.message.sid.clone(), SessionContainer::new(message_with_size.message.seq, message_with_size.message_raw_size, current_time));
             }
         }
         
@@ -174,8 +174,6 @@ fn analyzer_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _conf
                 session_data.remove(remove_item);
             }
         }
-
-        std::io::stdout().flush().unwrap();
     }
 }
 

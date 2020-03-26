@@ -87,7 +87,7 @@ pub mod datatypes {
     }
 
     impl SessionContainer {
-        pub fn new(seq: u64, rx_time: f64) -> SessionContainer {
+        pub fn new(seq: u64, received_bytes: usize, rx_time: f64) -> SessionContainer {
             let new_session = SessionContainer {
                 last_stats: 0.0,
                 last_rx: rx_time,
@@ -97,7 +97,7 @@ pub mod datatypes {
                 holes_closed: 0,
                 holes_timed_out: 0,
                 holes: std::collections::HashMap::new(),
-                received_bytes: 0,
+                received_bytes: received_bytes as u64,
             };
             return new_session;
         }
