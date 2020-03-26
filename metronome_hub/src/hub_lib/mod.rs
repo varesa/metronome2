@@ -32,6 +32,8 @@ pub mod datatypes {
         pub holes_closed: u64,
         pub holes_timed_out: u64,
         pub holes_current: u64,
+
+        pub received_bytes: u64,
     }
 
     impl ServerSessionStatistics {
@@ -45,6 +47,8 @@ pub mod datatypes {
                 holes_closed: session_container.holes_closed,
                 holes_timed_out: session_container.holes_timed_out,
                 holes_current: session_container.holes.len() as u64,
+
+                received_bytes: session_container.received_bytes,
             }
         }
 

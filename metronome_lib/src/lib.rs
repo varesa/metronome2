@@ -14,9 +14,20 @@ pub mod datatypes {
         pub sid: String,
     }
 
-    pub struct WrappedMessage {
-        pub addr: std::net::SocketAddr,
+    #[derive(Clone)]
+    pub struct MessageWithSize {
+        pub message_raw_size: usize,
         pub message: MetronomeMessage,
+    }
+
+    pub struct OriginInfoMessage {
+        pub addr: std::net::SocketAddr,
+        pub message_with_size: MessageWithSize,
+    }
+
+    pub struct TimestampedMessage {
+        pub timestamp: f64,
+        pub message_with_size: MessageWithSize,
     }
     
     impl MetronomeMessage {
@@ -28,7 +39,7 @@ pub mod datatypes {
             }
         }
 
-        pub fn as_vec(self) -> Result<Vec<u8>, rmp_serde::encode::Error> {
+        pub fn as_vec(&self) -> Result<Vec<u8>, rmp_serde::encode::Error> {
             return rmp_serde::to_vec(&self);
         }
 
@@ -72,6 +83,7 @@ pub mod datatypes {
         pub holes_closed: u64,
         pub holes_timed_out: u64,
         pub holes: std::collections::HashMap<u64, Hole>,
+        pub received_bytes: u64,
     }
 
     impl SessionContainer {
@@ -85,13 +97,15 @@ pub mod datatypes {
                 holes_closed: 0,
                 holes_timed_out: 0,
                 holes: std::collections::HashMap::new(),
+                received_bytes: 0,
             };
             return new_session;
         }
 
-        pub fn seq_analyze(&mut self, seq: u64, current_time: f64) {
+        pub fn seq_analyze(&mut self, seq: u64, size: usize, current_time: f64) {
             self.received_messages += 1;
             self.last_rx = current_time;
+            self.received_bytes += size as u64;
             if seq == (self.last_seq + 1) {
                 self.last_seq = seq;
             } else if self.holes.contains_key(&seq) {

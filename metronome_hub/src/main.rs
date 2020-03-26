@@ -6,7 +6,7 @@ extern crate serde_json;
 use std::io::Write;
 use clap::{Arg, App};
 mod hub_lib;
-use metronome_lib::datatypes::{MetronomeMessage, WrappedMessage, SessionContainer};
+use metronome_lib::datatypes::{MetronomeMessage, MessageWithSize, OriginInfoMessage, SessionContainer};
 use hub_lib::datatypes::{ServerConfig, WrappedSerializedMessage, ServerSessionStatistics};
 
 
@@ -54,22 +54,25 @@ fn prepare_stats_socket(addr: std::net::SocketAddr) -> std::net::UdpSocket {
     return socket;
 }
 
-fn receiver_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: ServerConfig, socket: std::net::UdpSocket, receiver_tx: std::sync::mpsc::Sender<WrappedMessage>) {
+fn receiver_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: ServerConfig, socket: std::net::UdpSocket, receiver_tx: std::sync::mpsc::Sender<OriginInfoMessage>) {
     let mut rxbuf = [0;65536];
     while running.load(std::sync::atomic::Ordering::Relaxed) {
-        if let Ok((_size, addr)) = socket.recv_from(&mut rxbuf) {
+        if let Ok((size, addr)) = socket.recv_from(&mut rxbuf) {
             if let Some(metronome_message) = MetronomeMessage::parse_from_buffer(&rxbuf) {
                 if metronome_message.key != config.key {
                     continue;
                 }
 
-                let wrapped_message = WrappedMessage {
+                let origin_info_message = OriginInfoMessage {
                     addr: addr,
-                    message: metronome_message,
+                    message_with_size: MessageWithSize {
+                        message_raw_size: size,
+                        message: metronome_message,
+                    },
                 };
 
-                if let Err(e) = receiver_tx.send(wrapped_message) {
-                    eprintln!("failed to send WrappedMessage from receiver thread: {}", e);
+                if let Err(e) = receiver_tx.send(origin_info_message) {
+                    eprintln!("failed to send OriginInfoMessage from receiver thread: {}", e);
                 }
             }
         }
@@ -81,7 +84,7 @@ fn responder_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _con
         if let Ok(wrapped_message) = responder_rx.recv_timeout(std::time::Duration::from_millis(SLEEP_TIME)) {
             loop {
                 if let Err(e) = socket.send_to(&wrapped_message.serialized_message, wrapped_message.addr) {
-                    eprintln!("failed to sendto() to metronome_client: {}", e);
+                    eprintln!("failed to sendto() to metronome_client {}: {}", wrapped_message.addr, e);
                 } else {
                     break;
                 }
@@ -90,26 +93,26 @@ fn responder_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _con
     }
 }
 
-fn handler_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _config: ServerConfig, handler_receiver_rx: std::sync::mpsc::Receiver<WrappedMessage>, handler_responder_tx: std::sync::mpsc::Sender<WrappedSerializedMessage>, handler_analyzer_tx: std::sync::mpsc::Sender<MetronomeMessage>) {
+fn handler_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _config: ServerConfig, handler_receiver_rx: std::sync::mpsc::Receiver<OriginInfoMessage>, handler_responder_tx: std::sync::mpsc::Sender<WrappedSerializedMessage>, handler_analyzer_tx: std::sync::mpsc::Sender<MessageWithSize>) {
     while running.load(std::sync::atomic::Ordering::Relaxed) {
-        if let Ok(wrapped_message) = handler_receiver_rx.recv_timeout(std::time::Duration::from_millis(SLEEP_TIME)) {
-            if wrapped_message.message.mode != "ping" {
+        if let Ok(origin_info_message) = handler_receiver_rx.recv_timeout(std::time::Duration::from_millis(SLEEP_TIME)) {
+            if origin_info_message.message_with_size.message.mode != "ping" {
                 continue;
             }
 
-            let original_message = wrapped_message.message.clone();
-            let response = wrapped_message.message.get_pong();
+            let original_message = origin_info_message.message_with_size.clone();
+            let response = origin_info_message.message_with_size.message.get_pong();
             
             match response.as_vec() {
                 Ok(serialized) => {
                     if let Err(e) = handler_responder_tx.send(WrappedSerializedMessage {
-                        addr: wrapped_message.addr,
+                        addr: origin_info_message.addr,
                         serialized_message: serialized
                     }) {
                         eprintln!("failed to send WrappedSerializedMessage to sender: {}", e);
                     }
                     if let Err(e) = handler_analyzer_tx.send(original_message) {
-                        eprintln!("failed to send MetronomeMessage to analyzer: {}", e);
+                        eprintln!("failed to send MessageWithSize to analyzer: {}", e);
                     }
                 },
                 Err(e) => {
@@ -129,42 +132,47 @@ fn send_stats(stats: ServerSessionStatistics, stats_socket: &std::net::UdpSocket
     }
 }
 
-fn analyzer_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _config: ServerConfig, analyzer_rx: std::sync::mpsc::Receiver<MetronomeMessage>, stats_socket: std::net::UdpSocket) {
+fn analyzer_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _config: ServerConfig, analyzer_rx: std::sync::mpsc::Receiver<MessageWithSize>, stats_socket: std::net::UdpSocket) {
     let mut session_data: std::collections::HashMap<std::string::String, SessionContainer> = std::collections::HashMap::new();
+    let mut last_session_data_scan: f64 = 0.0;
+    let session_data_scan_interval: f64 = TIMEOUT_SECONDS.min(STATS_INTERVAL).min(HOLE_TIMEOUT_SECONDS);
     while running.load(std::sync::atomic::Ordering::Relaxed) {
-        if let Ok(message) = analyzer_rx.recv_timeout(std::time::Duration::from_millis(SLEEP_TIME)) {
+        if let Ok(message_with_size) = analyzer_rx.recv_timeout(std::time::Duration::from_millis(SLEEP_TIME)) {
             let current_time = metronome_lib::util::get_timestamp();
-            if let Some(existing_session_statistics) = session_data.get_mut(&message.sid) {
+            if let Some(existing_session_statistics) = session_data.get_mut(&message_with_size.message.sid) {
                 let session_statistics: &mut SessionContainer;
                 session_statistics = existing_session_statistics;
-                session_statistics.seq_analyze(message.seq, current_time);
+                session_statistics.seq_analyze(message_with_size.message.seq, message_with_size.message_raw_size, current_time);
             } else {
-                session_data.insert(message.sid.clone(), SessionContainer::new(message.seq, current_time));
+                session_data.insert(message_with_size.message.sid.clone(), SessionContainer::new(message_with_size.message.seq, current_time));
             }
         }
         
-        let mut remove_items: Vec<std::string::String> = Vec::new();
-        for (session_key, session_container) in session_data.iter_mut() {
-            let current_time = metronome_lib::util::get_timestamp();
-            let session_deadline = current_time - TIMEOUT_SECONDS;
-            let hole_deadline = current_time - HOLE_TIMEOUT_SECONDS;
-            let stats_deadline = current_time - STATS_INTERVAL;
-            session_container.prune_holes(hole_deadline);
+        let current_time = metronome_lib::util::get_timestamp();
+        if last_session_data_scan < (current_time - session_data_scan_interval) {
+            last_session_data_scan = current_time;
+            let mut remove_items: Vec<std::string::String> = Vec::new();
+            for (session_key, session_container) in session_data.iter_mut() {
+                let current_time = metronome_lib::util::get_timestamp();
+                let session_deadline = current_time - TIMEOUT_SECONDS;
+                let hole_deadline = current_time - HOLE_TIMEOUT_SECONDS;
+                let stats_deadline = current_time - STATS_INTERVAL;
+                session_container.prune_holes(hole_deadline);
 
-            if session_container.last_rx < session_deadline {
-                session_container.last_stats = current_time;
-                send_stats(ServerSessionStatistics::from_session_container(session_key, session_container), &stats_socket);
-                remove_items.push(session_key.clone());
-            } else {
-                if session_container.last_stats < stats_deadline {
+                if session_container.last_rx < session_deadline {
                     session_container.last_stats = current_time;
                     send_stats(ServerSessionStatistics::from_session_container(session_key, session_container), &stats_socket);
+                    remove_items.push(session_key.clone());
+                } else {
+                    if session_container.last_stats < stats_deadline {
+                        session_container.last_stats = current_time;
+                        send_stats(ServerSessionStatistics::from_session_container(session_key, session_container), &stats_socket);
+                    }
                 }
             }
-        }
-        for remove_item in remove_items.iter() {
-            println!("DD");
-            session_data.remove(remove_item);
+            for remove_item in remove_items.iter() {
+                session_data.remove(remove_item);
+            }
         }
 
         std::io::stdout().flush().unwrap();
