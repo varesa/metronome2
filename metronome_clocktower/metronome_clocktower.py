@@ -157,15 +157,18 @@ class CustomCollector(object):
                 client_inflight_messages.add_metric(
                     [sid], session_info.get('inflight_messages'), timestamp=session_info.get('timestamp')
                 )
-                client_rtt_worst_seconds.add_metric(
-                    [sid], session_info.get('rtt_worst'), timestamp=session_info.get('timestamp')
-                )
-                client_rtt_best_seconds.add_metric(
-                    [sid], session_info.get('rtt_best'), timestamp=session_info.get('timestamp')
-                )
-                client_rtt_mavg_seconds.add_metric(
-                    [sid], session_info.get('rtt_mavg'), timestamp=session_info.get('timestamp')
-                )
+                if session_info.get('rtt_worst') is not None:
+                    client_rtt_worst_seconds.add_metric(
+                        [sid], session_info.get('rtt_worst'), timestamp=session_info.get('timestamp')
+                    )
+                if session_info.get('rtt_best') is not None:
+                    client_rtt_best_seconds.add_metric(
+                        [sid], session_info.get('rtt_best'), timestamp=session_info.get('timestamp')
+                    )
+                if session_info.get('rtt_mavg') is not None:
+                    client_rtt_mavg_seconds.add_metric(
+                        [sid], session_info.get('rtt_mavg'), timestamp=session_info.get('timestamp')
+                    )
 
         yield hub_received_messages
         yield hub_holes_created
