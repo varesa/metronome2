@@ -32,83 +32,83 @@ class CustomCollector(object):
         global client_sessions_lock
 
         hub_received_messages = CounterMetricFamily(
-            'metronome_hub_received_messages',
+            'metronome2_hub_received_messages',
             'Messages received by the metronome hub',
             labels=['sid']
         )
         hub_holes_created = CounterMetricFamily(
-            'metronome_hub_holes_created',
+            'metronome2_hub_holes_created',
             'Holes created within session',
             labels=['sid']
         )
         hub_holes_closed = CounterMetricFamily(
-            'metronome_hub_holes_closed',
+            'metronome2_hub_holes_closed',
             'Holes closed within session',
             labels=['sid']
         )
         hub_holes_timed_out = CounterMetricFamily(
-            'metronome_hub_holes_timed_out',
+            'metronome2_hub_holes_timed_out',
             'Holes timed out within session',
             labels=['sid']
         )
         hub_holes_current = GaugeMetricFamily(
-            'metronome_hub_holes_current',
+            'metronome2_hub_holes_current',
             'Current holes within session',
             labels=['sid']
         )
         hub_payload_bytes = CounterMetricFamily(
-            'metronome_hub_received_bytes',
+            'metronome2_hub_received_bytes',
             'Payload bytes received by the hub',
             labels=['sid']
         )
 
         client_unexpected_increments = CounterMetricFamily(
-            'metronome_client_seq_unexpected_increment',
+            'metronome2_client_seq_unexpected_increment',
             'Unexpected sequence number increments',
             labels=['sid']
         )
         client_unexpected_decrements = CounterMetricFamily(
-            'metronome_client_seq_unexpected_decrement',
+            'metronome2_client_seq_unexpected_decrement',
             'Unexpected sequence number decrements',
             labels=['sid']
         )
         client_sent_messages = CounterMetricFamily(
-            'metronome_client_sent_messages',
+            'metronome2_client_sent_messages',
             'Messages sent by the metronome client',
             labels=['sid']
         )
         client_received_messages = CounterMetricFamily(
-            'metronome_client_received_messages',
+            'metronome2_client_received_messages',
             'Messages received by the metronome client',
             labels=['sid']
         )
         client_timely_received_messages = CounterMetricFamily(
-            'metronome_client_timely_received_messages',
+            'metronome2_client_timely_received_messages',
             'Timely messages received by the metronome client',
             labels=['sid']
         )
         client_lost_messages = CounterMetricFamily(
-            'metronome_client_lost_messages',
+            'metronome2_client_lost_messages',
             'Messages lost',
             labels=['sid']
         )
         client_inflight_messages = GaugeMetricFamily(
-            'metronome_client_inflight_messages',
+            'metronome2_client_inflight_messages',
             'Current messages in-flight',
             labels=['sid']
         )
         client_rtt_worst_seconds = GaugeMetricFamily(
-            'metronome_client_rtt_worst',
+            'metronome2_client_rtt_worst',
             'Worst RTT seen by client',
             labels=['sid']
         )
         client_rtt_best_seconds = GaugeMetricFamily(
-            'metronome_client_rtt_best',
+            'metronome2_client_rtt_best',
             'Worst RTT seen by client',
             labels=['sid']
         )
         client_rtt_mavg_seconds = GaugeMetricFamily(
-            'metronome_client_rtt_mavg',
+            'metronome2_client_rtt_mavg',
             'Moving average of RTT',
             labels=['sid']
         )
