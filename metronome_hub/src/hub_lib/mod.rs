@@ -28,6 +28,7 @@ pub mod datatypes {
 
     #[derive(Serialize)]
     pub struct ServerSessionStatistics {
+        pub clocktower_type: std::string::String,
         pub sid: std::string::String,
         pub timestamp: f64,
         pub received_messages: u64,
@@ -51,6 +52,7 @@ pub mod datatypes {
     impl ServerSessionStatistics {
         pub fn from_session_container(sid: &std::string::String, session_container: &SessionContainer) -> ServerSessionStatistics {
             return ServerSessionStatistics {
+                clocktower_type: "server_session_statistics".to_string(),
                 sid: sid.clone(),
                 timestamp: session_container.last_rx,
                 received_messages: session_container.received_messages,
