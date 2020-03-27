@@ -112,6 +112,11 @@ class CustomCollector(object):
             'Moving average of RTT',
             labels=['sid']
         )
+        client_payload_bytes = CounterMetricFamily(
+            'metronome2_client_received_bytes',
+            'Payload bytes received by the client',
+            labels=['sid']
+        )
 
         with hub_sessions_lock:
             for sid, session_info in hub_sessions.items():
@@ -169,12 +174,17 @@ class CustomCollector(object):
                     client_rtt_mavg_seconds.add_metric(
                         [sid], session_info.get('rtt_mavg'), timestamp=session_info.get('timestamp')
                     )
+                if session_info.get('received_bytes') is not None:
+                    client_payload_bytes.add_metric(
+                        [sid], session_info.get('received_bytes'), timestamp=session_info.get('timestamp')
+                    )
 
         yield hub_received_messages
         yield hub_holes_created
         yield hub_holes_closed
         yield hub_holes_timed_out
         yield hub_holes_current
+        yield hub_payload_bytes
 
         yield client_unexpected_increments
         yield client_unexpected_decrements
@@ -186,6 +196,7 @@ class CustomCollector(object):
         yield client_rtt_worst_seconds
         yield client_rtt_best_seconds
         yield client_rtt_mavg_seconds
+        yield client_payload_bytes
 
 
 def inject_client_session_statistics(payload):
