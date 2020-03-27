@@ -16,6 +16,8 @@ pub mod datatypes {
         pub lost_messages: u64,
         pub inflight_messages: u64,
 
+        pub received_bytes: u64,
+
         #[serde(skip_serializing_if="Option::is_none")]
         pub rtt_worst: Option<f64>,
         #[serde(skip_serializing_if="Option::is_none")]
@@ -42,6 +44,8 @@ pub mod datatypes {
         pub lost_messages: u64,
         pub inflight_messages: u64,
 
+        pub received_bytes: u64,
+
         pub rtt_worst: Option<f64>,
         pub rtt_best: Option<f64>,
         pub rtt_mavg: Option<f64>,
@@ -66,6 +70,8 @@ pub mod datatypes {
                 lost_messages: 0,
                 inflight_messages: 0,
 
+                received_bytes: 0,
+
                 rtt_worst: None,
                 rtt_best: None,
                 rtt_mavg: None,
@@ -78,7 +84,7 @@ pub mod datatypes {
             self.inflight_messages += 1;
         }
 
-        pub fn incoming(&mut self, timestamp: f64, seq: u64,) {
+        pub fn incoming(&mut self, timestamp: f64, seq: u64, received_bytes: usize) {
             self.last_rx = Some(timestamp);
             if self.last_rx_seq.is_some() {
                 if seq == self.next_expected_seq {
@@ -94,6 +100,7 @@ pub mod datatypes {
             } else {
                 self.last_rx_seq = Some(seq);
             }
+            self.received_bytes += received_bytes as u64;
             self.received_messages += 1;
             self.next_expected_seq = seq + 1;
             self.last_rx_seq = Some(seq);
@@ -146,6 +153,8 @@ pub mod datatypes {
 
                 lost_messages: st.lost_messages,
                 inflight_messages: st.inflight_messages,
+
+                received_bytes: st.received_bytes,
 
                 rtt_worst: st.rtt_worst,
                 rtt_best: st.rtt_best,

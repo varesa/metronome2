@@ -135,7 +135,7 @@ fn stats_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: 
 
         if let Ok(timestamped_message) = rx_stats_rx.try_recv() {
             let message = &timestamped_message.message_with_size.message;
-            stats.incoming(timestamped_message.timestamp, message.seq);
+            stats.incoming(timestamped_message.timestamp, message.seq, timestamped_message.message_with_size.message_raw_size);
             if let Some(rtt_measurement) = tracker.get(&message.seq) {
                 stats.rtt_success(rtt_measurement.timestamp, timestamped_message.timestamp);
                 tracker.remove(&message.seq);
