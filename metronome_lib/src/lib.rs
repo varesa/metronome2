@@ -86,10 +86,15 @@ pub mod datatypes {
         pub holes: std::collections::HashMap<u64, Hole>,
         pub received_bytes: u64,
         pub intermessage_gap_mavg: Option<f64>,
+        pub receive_time_windows: Vec<u64>,
     }
 
     impl SessionContainer {
         pub fn new(seq: u64, received_bytes: usize, rx_time: f64) -> SessionContainer {
+            let mut receive_time_windows = Vec::new();
+            for _i in 0..10 {
+                receive_time_windows.push(0);
+            }
             let new_session = SessionContainer {
                 last_stats: 0.0,
                 last_rx: rx_time,
@@ -101,6 +106,7 @@ pub mod datatypes {
                 holes: std::collections::HashMap::new(),
                 received_bytes: received_bytes as u64,
                 intermessage_gap_mavg: None,
+                receive_time_windows: receive_time_windows,
             };
             return new_session;
         }
@@ -131,6 +137,12 @@ pub mod datatypes {
                     }
                 }
                 self.last_seq = seq;
+            }
+            let target_bucket: usize = (current_time.fract() * self.receive_time_windows.len() as f64).floor() as usize;
+            if let Some(value) = self.receive_time_windows.get_mut(target_bucket) {
+                *value += 1;
+            } else {
+                eprintln!("failed to assign receive time window to packet (tgtb={}, rxtw={})", target_bucket, current_time);
             }
         }
 

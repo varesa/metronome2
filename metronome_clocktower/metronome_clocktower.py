@@ -66,6 +66,11 @@ class CustomCollector(object):
             'Moving average of intermessage gap',
             labels=['sid']
         )
+        hub_receive_time_window_messages = GaugeMetricFamily(
+            'metronome2_hub_receive_time_window_messages',
+            'Messages received by time window',
+            labels=['sid', 'window']
+        )
 
         client_unexpected_increments = CounterMetricFamily(
             'metronome2_client_seq_unexpected_increment',
@@ -127,6 +132,11 @@ class CustomCollector(object):
             'Moving average of intermessage gap',
             labels=['sid']
         )
+        client_receive_time_window_messages = GaugeMetricFamily(
+            'metronome2_client_receive_time_window_messages',
+            'Messages received by time window',
+            labels=['sid', 'window']
+        )
 
         with hub_sessions_lock:
             for sid, session_info in hub_sessions.items():
@@ -152,6 +162,14 @@ class CustomCollector(object):
                     hub_intermessage_gap_mavg_seconds.add_metric(
                         [sid], session_info.get('intermessage_gap_mavg'), timestamp=session_info.get('timestamp')
                     )
+                if session_info.get('receive_time_windows') is not None:
+                    i = 0
+                    for window in session_info.get('receive_time_windows'):
+                        hub_receive_time_window_messages.add_metric(
+                            [sid, str(i)],
+                            window, timestamp=session_info.get('timestamp')
+                        )
+                        i += 1
 
         with client_sessions_lock:
             for sid, session_info in client_sessions.items():
@@ -196,6 +214,14 @@ class CustomCollector(object):
                     client_intermessage_gap_mavg_seconds.add_metric(
                         [sid], session_info.get('intermessage_gap_mavg'), timestamp=session_info.get('timestamp')
                     )
+                if session_info.get('receive_time_windows') is not None:
+                    i = 0
+                    for window in session_info.get('receive_time_windows'):
+                        client_receive_time_window_messages.add_metric(
+                            [sid, str(i)],
+                            window, timestamp=session_info.get('timestamp')
+                        )
+                        i += 1
 
         yield hub_received_messages
         yield hub_holes_created
@@ -204,6 +230,7 @@ class CustomCollector(object):
         yield hub_holes_current
         yield hub_payload_bytes
         yield hub_intermessage_gap_mavg_seconds
+        yield hub_receive_time_window_messages
 
         yield client_unexpected_increments
         yield client_unexpected_decrements
@@ -217,6 +244,7 @@ class CustomCollector(object):
         yield client_rtt_mavg_seconds
         yield client_payload_bytes
         yield client_intermessage_gap_mavg_seconds
+        yield client_receive_time_window_messages
 
 
 def inject_client_session_statistics(payload):

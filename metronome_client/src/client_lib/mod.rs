@@ -26,6 +26,8 @@ pub mod datatypes {
         pub rtt_mavg: Option<f64>,
         #[serde(skip_serializing_if="Option::is_none")]
         pub intermessage_gap_mavg: Option<f64>,
+
+        pub receive_time_windows: Vec<u64>,
     }
 
     pub struct ClientSessionTracker {
@@ -53,10 +55,17 @@ pub mod datatypes {
         pub rtt_mavg: Option<f64>,
 
         pub intermessage_gap_mavg: Option<f64>,
+
+        pub receive_time_windows: Vec<u64>,
     }
 
     impl ClientSessionTracker {
         pub fn new() -> ClientSessionTracker {
+            let mut receive_time_windows = Vec::new();
+            for _i in 0..10 {
+                receive_time_windows.push(0);
+            }
+
             return ClientSessionTracker {
                 last_rx: None,
                 last_tx: None,
@@ -81,6 +90,8 @@ pub mod datatypes {
                 rtt_mavg: None,
 
                 intermessage_gap_mavg: None,
+
+                receive_time_windows: receive_time_windows,
             };
         }
 
@@ -120,6 +131,12 @@ pub mod datatypes {
             self.next_expected_seq = seq + 1;
             self.last_rx_seq = Some(seq);
             self.max_seq = self.max_seq.max(seq);
+            let target_bucket: usize = (timestamp.fract() * self.receive_time_windows.len() as f64).floor() as usize;
+            if let Some(value) = self.receive_time_windows.get_mut(target_bucket) {
+                *value += 1;
+            } else {
+                eprintln!("failed to assign receive time window to packet (tgtb={}, rxtw={})", target_bucket, timestamp);
+            }
         }
 
         pub fn rtt_timeout(&mut self) {
@@ -176,6 +193,8 @@ pub mod datatypes {
                 rtt_mavg: st.rtt_mavg,
 
                 intermessage_gap_mavg: st.intermessage_gap_mavg,
+
+                receive_time_windows: st.receive_time_windows.clone(),
             }
         }
 

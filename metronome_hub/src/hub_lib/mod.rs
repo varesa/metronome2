@@ -38,6 +38,8 @@ pub mod datatypes {
 
         #[serde(skip_serializing_if="Option::is_none")]
         pub intermessage_gap_mavg: Option<f64>,
+
+        pub receive_time_windows: Vec<u64>,
     }
 
     impl ServerSessionStatistics {
@@ -55,6 +57,8 @@ pub mod datatypes {
                 received_bytes: session_container.received_bytes,
 
                 intermessage_gap_mavg: session_container.intermessage_gap_mavg,
+
+                receive_time_windows: session_container.receive_time_windows.clone(),
             }
         }
 
