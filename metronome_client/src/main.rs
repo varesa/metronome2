@@ -11,7 +11,6 @@ mod client_lib;
 
 const SLEEP_TIME: u64 = 100;
 const TIMEOUT_SECONDS: f64 = 5.0;
-const STATS_SCAN_SECONDS: f64 = 1.0;
 
 fn prepare_connect_socket(addr: std::net::SocketAddr) -> std::net::UdpSocket {
     let socket: std::net::UdpSocket;
@@ -144,7 +143,7 @@ fn stats_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: 
         }
 
         let current_timestamp = metronome_lib::util::get_timestamp();
-        if last_scan < (current_timestamp - STATS_SCAN_SECONDS) {
+        if last_scan < (current_timestamp - config.stats_interval) {
             let deadline = current_timestamp - TIMEOUT_SECONDS;
             let mut delete_list: Vec<u64> = Vec::new();
             for (seq, rtt_measurement) in tracker.iter() {
@@ -226,11 +225,10 @@ fn main() {
                 .required(true)
         )
         .arg(
-            Arg::with_name("probe_id")
-                .short("P")
-                .long("probe-id")
+            Arg::with_name("stats_interval")
+                .long("stats-interval")
                 .takes_value(true)
-                .default_value("")
+                .default_value("1.0")
         )
         .get_matches();
 
@@ -243,6 +241,7 @@ fn main() {
         clocktower: matches.value_of("clocktower").unwrap().parse().unwrap(),
         key: matches.value_of("key").unwrap().to_string(),
         sid: matches.value_of("session_id").unwrap().to_string(),
+        stats_interval: matches.value_of("stats_interval").unwrap().parse().unwrap(),
     };
 
     let running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));

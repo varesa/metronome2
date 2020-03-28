@@ -61,6 +61,11 @@ class CustomCollector(object):
             'Payload bytes received by the hub',
             labels=['sid']
         )
+        hub_intermessage_gap_mavg_seconds = GaugeMetricFamily(
+            'metronome2_hub_intermessage_gap_mavg',
+            'Moving average of intermessage gap',
+            labels=['sid']
+        )
 
         client_unexpected_increments = CounterMetricFamily(
             'metronome2_client_seq_unexpected_increment',
@@ -117,6 +122,11 @@ class CustomCollector(object):
             'Payload bytes received by the client',
             labels=['sid']
         )
+        client_intermessage_gap_mavg_seconds = GaugeMetricFamily(
+            'metronome2_client_intermessage_gap_mavg',
+            'Moving average of intermessage gap',
+            labels=['sid']
+        )
 
         with hub_sessions_lock:
             for sid, session_info in hub_sessions.items():
@@ -138,6 +148,10 @@ class CustomCollector(object):
                 hub_payload_bytes.add_metric(
                     [sid], session_info.get('received_bytes'), timestamp=session_info.get('timestamp')
                 )
+                if session_info.get('intermessage_gap_mavg') is not None:
+                    hub_intermessage_gap_mavg_seconds.add_metric(
+                        [sid], session_info.get('intermessage_gap_mavg'), timestamp=session_info.get('timestamp')
+                    )
 
         with client_sessions_lock:
             for sid, session_info in client_sessions.items():
@@ -178,6 +192,10 @@ class CustomCollector(object):
                     client_payload_bytes.add_metric(
                         [sid], session_info.get('received_bytes'), timestamp=session_info.get('timestamp')
                     )
+                if session_info.get('intermessage_gap_mavg') is not None:
+                    client_intermessage_gap_mavg_seconds.add_metric(
+                        [sid], session_info.get('intermessage_gap_mavg'), timestamp=session_info.get('timestamp')
+                    )
 
         yield hub_received_messages
         yield hub_holes_created
@@ -185,6 +203,7 @@ class CustomCollector(object):
         yield hub_holes_timed_out
         yield hub_holes_current
         yield hub_payload_bytes
+        yield hub_intermessage_gap_mavg_seconds
 
         yield client_unexpected_increments
         yield client_unexpected_decrements
@@ -197,6 +216,7 @@ class CustomCollector(object):
         yield client_rtt_best_seconds
         yield client_rtt_mavg_seconds
         yield client_payload_bytes
+        yield client_intermessage_gap_mavg_seconds
 
 
 def inject_client_session_statistics(payload):

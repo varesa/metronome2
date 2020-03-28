@@ -24,6 +24,8 @@ pub mod datatypes {
         pub rtt_best: Option<f64>,
         #[serde(skip_serializing_if="Option::is_none")]
         pub rtt_mavg: Option<f64>,
+        #[serde(skip_serializing_if="Option::is_none")]
+        pub intermessage_gap_mavg: Option<f64>,
     }
 
     pub struct ClientSessionTracker {
@@ -49,6 +51,8 @@ pub mod datatypes {
         pub rtt_worst: Option<f64>,
         pub rtt_best: Option<f64>,
         pub rtt_mavg: Option<f64>,
+
+        pub intermessage_gap_mavg: Option<f64>,
     }
 
     impl ClientSessionTracker {
@@ -75,6 +79,8 @@ pub mod datatypes {
                 rtt_worst: None,
                 rtt_best: None,
                 rtt_mavg: None,
+
+                intermessage_gap_mavg: None,
             };
         }
 
@@ -85,7 +91,15 @@ pub mod datatypes {
         }
 
         pub fn incoming(&mut self, timestamp: f64, seq: u64, received_bytes: usize) {
-            self.last_rx = Some(timestamp);
+            if let Some(last_rx_timestamp) = self.last_rx {
+                if timestamp > last_rx_timestamp {
+                    if let Some(current_intermessage_gap) = self.intermessage_gap_mavg {
+                        self.intermessage_gap_mavg = Some(((current_intermessage_gap * 9.0) + ((timestamp - last_rx_timestamp) * 1.0)) / 10.0);
+                    } else {
+                        self.intermessage_gap_mavg = Some(timestamp - last_rx_timestamp);
+                    }
+                }
+            }
             if self.last_rx_seq.is_some() {
                 if seq == self.next_expected_seq {
                     // All good, we are receiving the frame we though we were going to get
@@ -100,6 +114,7 @@ pub mod datatypes {
             } else {
                 self.last_rx_seq = Some(seq);
             }
+            self.last_rx = Some(timestamp);
             self.received_bytes += received_bytes as u64;
             self.received_messages += 1;
             self.next_expected_seq = seq + 1;
@@ -159,6 +174,8 @@ pub mod datatypes {
                 rtt_worst: st.rtt_worst,
                 rtt_best: st.rtt_best,
                 rtt_mavg: st.rtt_mavg,
+
+                intermessage_gap_mavg: st.intermessage_gap_mavg,
             }
         }
 
@@ -177,6 +194,7 @@ pub mod datatypes {
         pub clocktower: std::net::SocketAddr,
         pub key: String,
         pub sid: String,
+        pub stats_interval: f64,
     }
 
     pub struct RTTMeasurement {

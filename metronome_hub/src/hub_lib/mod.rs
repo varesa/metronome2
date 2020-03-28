@@ -14,6 +14,7 @@ pub mod datatypes {
         pub bind: std::net::SocketAddr,
         pub key: String,
         pub clocktower: std::net::SocketAddr,
+        pub stats_interval: f64,
     }
 
     pub struct WrappedSerializedMessage {
@@ -34,6 +35,9 @@ pub mod datatypes {
         pub holes_current: u64,
 
         pub received_bytes: u64,
+
+        #[serde(skip_serializing_if="Option::is_none")]
+        pub intermessage_gap_mavg: Option<f64>,
     }
 
     impl ServerSessionStatistics {
@@ -49,6 +53,8 @@ pub mod datatypes {
                 holes_current: session_container.holes.len() as u64,
 
                 received_bytes: session_container.received_bytes,
+
+                intermessage_gap_mavg: session_container.intermessage_gap_mavg,
             }
         }
 

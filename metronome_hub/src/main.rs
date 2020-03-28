@@ -12,7 +12,6 @@ use hub_lib::datatypes::{ServerConfig, WrappedSerializedMessage, ServerSessionSt
 const SLEEP_TIME: u64 = 100;
 const TIMEOUT_SECONDS: f64 = 5.0;
 const HOLE_TIMEOUT_SECONDS: f64 = 1.0;
-const STATS_INTERVAL: f64 = 1.0;
 
 
 fn prepare_client_socket(addr: std::net::SocketAddr) -> std::net::UdpSocket {
@@ -63,6 +62,7 @@ fn receiver_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, confi
                 }
 
                 let origin_info_message = OriginInfoMessage {
+                    timestamp: metronome_lib::util::get_timestamp(),
                     addr: addr,
                     message_with_size: MessageWithSize {
                         message_raw_size: size,
@@ -92,15 +92,14 @@ fn responder_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _con
     }
 }
 
-fn handler_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _config: ServerConfig, handler_receiver_rx: std::sync::mpsc::Receiver<OriginInfoMessage>, handler_responder_tx: std::sync::mpsc::Sender<WrappedSerializedMessage>, handler_analyzer_tx: std::sync::mpsc::Sender<MessageWithSize>) {
+fn handler_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _config: ServerConfig, handler_receiver_rx: std::sync::mpsc::Receiver<OriginInfoMessage>, handler_responder_tx: std::sync::mpsc::Sender<WrappedSerializedMessage>, handler_analyzer_tx: std::sync::mpsc::Sender<OriginInfoMessage>) {
     while running.load(std::sync::atomic::Ordering::Relaxed) {
         if let Ok(origin_info_message) = handler_receiver_rx.recv_timeout(std::time::Duration::from_millis(SLEEP_TIME)) {
             if origin_info_message.message_with_size.message.mode != "ping" {
                 continue;
             }
 
-            let original_message = origin_info_message.message_with_size.clone();
-            let response = origin_info_message.message_with_size.message.get_pong();
+            let response = origin_info_message.message_with_size.clone().message.get_pong();
             
             match response.as_vec() {
                 Ok(serialized) => {
@@ -110,7 +109,7 @@ fn handler_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _confi
                     }) {
                         eprintln!("failed to send WrappedSerializedMessage to sender: {}", e);
                     }
-                    if let Err(e) = handler_analyzer_tx.send(original_message) {
+                    if let Err(e) = handler_analyzer_tx.send(origin_info_message) {
                         eprintln!("failed to send MessageWithSize to analyzer: {}", e);
                     }
                 },
@@ -131,19 +130,19 @@ fn send_stats(stats: ServerSessionStatistics, stats_socket: &std::net::UdpSocket
     }
 }
 
-fn analyzer_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _config: ServerConfig, analyzer_rx: std::sync::mpsc::Receiver<MessageWithSize>, stats_socket: std::net::UdpSocket) {
+fn analyzer_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: ServerConfig, analyzer_rx: std::sync::mpsc::Receiver<OriginInfoMessage>, stats_socket: std::net::UdpSocket) {
     let mut session_data: std::collections::HashMap<std::string::String, SessionContainer> = std::collections::HashMap::new();
     let mut last_session_data_scan: f64 = 0.0;
-    let session_data_scan_interval: f64 = TIMEOUT_SECONDS.min(STATS_INTERVAL).min(HOLE_TIMEOUT_SECONDS);
+    let session_data_scan_interval: f64 = TIMEOUT_SECONDS.min(config.stats_interval).min(HOLE_TIMEOUT_SECONDS);
     while running.load(std::sync::atomic::Ordering::Relaxed) {
-        if let Ok(message_with_size) = analyzer_rx.recv_timeout(std::time::Duration::from_millis(SLEEP_TIME)) {
-            let current_time = metronome_lib::util::get_timestamp();
+        if let Ok(origin_info_message) = analyzer_rx.recv_timeout(std::time::Duration::from_millis(SLEEP_TIME)) {
+            let message_with_size = origin_info_message.message_with_size;
             if let Some(existing_session_statistics) = session_data.get_mut(&message_with_size.message.sid) {
                 let session_statistics: &mut SessionContainer;
                 session_statistics = existing_session_statistics;
-                session_statistics.seq_analyze(message_with_size.message.seq, message_with_size.message_raw_size, current_time);
+                session_statistics.seq_analyze(message_with_size.message.seq, message_with_size.message_raw_size, origin_info_message.timestamp);
             } else {
-                session_data.insert(message_with_size.message.sid.clone(), SessionContainer::new(message_with_size.message.seq, message_with_size.message_raw_size, current_time));
+                session_data.insert(message_with_size.message.sid.clone(), SessionContainer::new(message_with_size.message.seq, message_with_size.message_raw_size, origin_info_message.timestamp));
             }
         }
         
@@ -155,7 +154,7 @@ fn analyzer_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _conf
                 let current_time = metronome_lib::util::get_timestamp();
                 let session_deadline = current_time - TIMEOUT_SECONDS;
                 let hole_deadline = current_time - HOLE_TIMEOUT_SECONDS;
-                let stats_deadline = current_time - STATS_INTERVAL;
+                let stats_deadline = current_time - config.stats_interval;
                 session_container.prune_holes(hole_deadline);
 
                 if session_container.last_rx < session_deadline {
@@ -200,12 +199,19 @@ fn main() {
                 .takes_value(true)
                 .required(true)
         )
+        .arg(
+            Arg::with_name("stats_interval")
+                .long("stats-interval")
+                .takes_value(true)
+                .default_value("1.0")
+        )
         .get_matches();
     
     let config = ServerConfig {
         bind: matches.value_of("bind").unwrap().parse().unwrap(),
         key: matches.value_of("key").unwrap().to_string(),
         clocktower: matches.value_of("clocktower").unwrap().parse().unwrap(),
+        stats_interval: matches.value_of("stats_interval").unwrap().parse().unwrap(),
     };
 
     let socket = prepare_client_socket(config.bind);

@@ -21,6 +21,7 @@ pub mod datatypes {
     }
 
     pub struct OriginInfoMessage {
+        pub timestamp: f64,
         pub addr: std::net::SocketAddr,
         pub message_with_size: MessageWithSize,
     }
@@ -84,6 +85,7 @@ pub mod datatypes {
         pub holes_timed_out: u64,
         pub holes: std::collections::HashMap<u64, Hole>,
         pub received_bytes: u64,
+        pub intermessage_gap_mavg: Option<f64>,
     }
 
     impl SessionContainer {
@@ -98,11 +100,19 @@ pub mod datatypes {
                 holes_timed_out: 0,
                 holes: std::collections::HashMap::new(),
                 received_bytes: received_bytes as u64,
+                intermessage_gap_mavg: None,
             };
             return new_session;
         }
 
         pub fn seq_analyze(&mut self, seq: u64, size: usize, current_time: f64) {
+            if current_time > self.last_rx {
+                if let Some(current_intermessage_gap) = self.intermessage_gap_mavg {
+                    self.intermessage_gap_mavg = Some(((current_intermessage_gap * 9.0) + ((current_time - self.last_rx) * 1.0)) / 10.0);
+                } else {
+                    self.intermessage_gap_mavg = Some(current_time - self.last_rx);
+                }
+            }
             self.received_messages += 1;
             self.last_rx = current_time;
             self.received_bytes += size as u64;
