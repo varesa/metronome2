@@ -38,7 +38,7 @@ fn prepare_connect_socket(addr: std::net::SocketAddr) -> std::net::UdpSocket {
 fn tx_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: ClientConfig, tx_socket: std::net::UdpSocket, tx_stats_tx: std::sync::mpsc::Sender<RTTMeasurement>, mut target_pps: single_value_channel::Receiver<u64>) {
     let mut msg_seq: u64 = 0;
     let payload = std::iter::repeat("X").take(config.payload_size).collect::<String>();
-    let mut next_tx_at = 0.0;
+    let mut next_tx_at = metronome_lib::util::get_timestamp();
     let mut msg: MetronomeMessage = MetronomeMessage {
         mode: "ping".to_string(),
         payload: Some(payload),
@@ -52,27 +52,31 @@ fn tx_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: Cli
         pps_sleeptime = 1.0/(*target_pps.latest() as f64);
         let current_time = metronome_lib::util::get_timestamp();
         if current_time >= next_tx_at {
-            msg.seq = msg_seq;
-            match msg.as_vec() {
-                Ok(serialized) => {
-                    if let Err(e) = tx_socket.send(&serialized) {
-                        eprintln!("failed to send message to hub: {}", e);
-                    } else {
-                        let rttmeas = RTTMeasurement {
-                            seq: msg_seq,
-                            timestamp: current_time,
-                        };
-                        if let Err(e) = tx_stats_tx.send(rttmeas) {
-                            eprintln!("failed to send RTT measurement to stats thread: {}", e);
+            // Advance next_tx_at to previous second if fallen further behind
+            next_tx_at = (current_time-1.0).max(next_tx_at);
+            while current_time >= next_tx_at {
+                msg.seq = msg_seq;
+                match msg.as_vec() {
+                    Ok(serialized) => {
+                        if let Err(e) = tx_socket.send(&serialized) {
+                            eprintln!("failed to send message to hub: {}", e);
+                        } else {
+                            let rttmeas = RTTMeasurement {
+                                seq: msg_seq,
+                                timestamp: current_time,
+                            };
+                            if let Err(e) = tx_stats_tx.send(rttmeas) {
+                                eprintln!("failed to send RTT measurement to stats thread: {}", e);
+                            }
+                            msg_seq += 1;
                         }
-                        msg_seq += 1;
+                    },
+                    Err(e) => {
+                        eprintln!("failed to serialize MetronomeMessage for transmission: {}", e);
                     }
-                },
-                Err(e) => {
-                    eprintln!("failed to serialize MetronomeMessage for transmission: {}", e);
                 }
+                next_tx_at += pps_sleeptime;
             }
-            next_tx_at = current_time + pps_sleeptime;
         }
         if config.use_sleep {
             // Fixme

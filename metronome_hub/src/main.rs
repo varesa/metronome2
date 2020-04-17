@@ -131,48 +131,68 @@ fn send_stats(stats: ServerSessionStatistics, stats_socket: &std::net::UdpSocket
 }
 
 fn analyzer_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: ServerConfig, analyzer_rx: std::sync::mpsc::Receiver<OriginInfoMessage>, stats_socket: std::net::UdpSocket) {
-    let mut session_data: std::collections::HashMap<std::string::String, SessionContainer> = std::collections::HashMap::new();
-    let mut last_session_data_scan: f64 = 0.0;
-    let session_data_scan_interval: f64 = TIMEOUT_SECONDS.min(config.stats_interval).min(HOLE_TIMEOUT_SECONDS);
-    while running.load(std::sync::atomic::Ordering::Relaxed) {
-        if let Ok(origin_info_message) = analyzer_rx.recv_timeout(std::time::Duration::from_millis(SLEEP_TIME)) {
-            let message_with_size = origin_info_message.message_with_size;
-            if let Some(existing_session_statistics) = session_data.get_mut(&message_with_size.message.sid) {
-                let session_statistics: &mut SessionContainer;
-                session_statistics = existing_session_statistics;
-                session_statistics.seq_analyze(message_with_size.message.seq, message_with_size.message_raw_size, origin_info_message.timestamp);
-            } else {
-                session_data.insert(message_with_size.message.sid.clone(), SessionContainer::new(message_with_size.message.seq, message_with_size.message_raw_size, origin_info_message.timestamp));
-            }
-        }
-        
-        let current_time = metronome_lib::util::get_timestamp();
-        if last_session_data_scan < (current_time - session_data_scan_interval) {
-            last_session_data_scan = current_time;
-            let mut remove_items: Vec<std::string::String> = Vec::new();
-            for (session_key, session_container) in session_data.iter_mut() {
-                let current_time = metronome_lib::util::get_timestamp();
-                let session_deadline = current_time - TIMEOUT_SECONDS;
-                let hole_deadline = current_time - HOLE_TIMEOUT_SECONDS;
-                let stats_deadline = current_time - config.stats_interval;
-                session_container.prune_holes(hole_deadline);
+    let session_data_arced: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<std::string::String, SessionContainer>>> = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
 
-                if session_container.last_rx < session_deadline {
-                    session_container.last_stats = current_time;
-                    send_stats(ServerSessionStatistics::from_session_container(session_key, session_container), &stats_socket);
-                    remove_items.push(session_key.clone());
-                } else {
-                    if session_container.last_stats < stats_deadline {
-                        session_container.last_stats = current_time;
-                        send_stats(ServerSessionStatistics::from_session_container(session_key, session_container), &stats_socket);
+    let session_data_arced_inserter = session_data_arced.clone();
+    let running_inserter = running.clone();
+    let session_data_inserter_thread = std::thread::spawn(move || {
+        while running_inserter.load(std::sync::atomic::Ordering::Relaxed) {
+            if let Ok(origin_info_message) = analyzer_rx.recv_timeout(std::time::Duration::from_millis(SLEEP_TIME)) {
+                let message_with_size = origin_info_message.message_with_size;
+                if let Ok(mut session_data) = session_data_arced_inserter.lock() {
+                    if let Some(existing_session_statistics) = session_data.get_mut(&message_with_size.message.sid) {
+                        let session_statistics: &mut SessionContainer;
+                        session_statistics = existing_session_statistics;
+                        session_statistics.seq_analyze(message_with_size.message.seq, message_with_size.message_raw_size, origin_info_message.timestamp);
+                    } else {
+                        session_data.insert(message_with_size.message.sid.clone(), SessionContainer::new(message_with_size.message.seq, message_with_size.message_raw_size, origin_info_message.timestamp));
                     }
                 }
             }
-            for remove_item in remove_items.iter() {
-                session_data.remove(remove_item);
-            }
         }
-    }
+    });
+    
+    let session_data_arced_scanner = session_data_arced.clone();
+    let running_scanner = running.clone();
+    let session_scanner_thread = std::thread::spawn(move || {
+        let mut last_session_data_scan: f64 = 0.0;
+        let session_data_scan_interval: f64 = TIMEOUT_SECONDS.min(config.stats_interval).min(HOLE_TIMEOUT_SECONDS);
+
+        while running_scanner.load(std::sync::atomic::Ordering::Relaxed) {
+            let current_time = metronome_lib::util::get_timestamp();
+            if last_session_data_scan < (current_time - session_data_scan_interval) {
+                last_session_data_scan = current_time;
+                let mut remove_items: Vec<std::string::String> = Vec::new();
+                if let Ok(mut session_data) = session_data_arced_scanner.lock() {
+                    for (session_key, session_container) in session_data.iter_mut() {
+                        let session_deadline = current_time - TIMEOUT_SECONDS;
+                        let hole_deadline = current_time - HOLE_TIMEOUT_SECONDS;
+                        let stats_deadline = current_time - config.stats_interval;
+                        session_container.prune_holes(hole_deadline);
+
+                        if session_container.last_rx < session_deadline {
+                            session_container.last_stats = current_time;
+                            send_stats(ServerSessionStatistics::from_session_container(session_key, session_container), &stats_socket);
+                            remove_items.push(session_key.clone());
+                        } else {
+                            if session_container.last_stats < stats_deadline {
+                                session_container.last_stats = current_time;
+                                send_stats(ServerSessionStatistics::from_session_container(session_key, session_container), &stats_socket);
+                            }
+                        }
+                    }
+                    for remove_item in remove_items.iter() {
+                        session_data.remove(remove_item);
+                    }
+                }
+            }
+            let sleeptime = std::time::Duration::from_millis(100);
+            std::thread::sleep(sleeptime);
+        }
+    });
+
+    session_data_inserter_thread.join().unwrap();
+    session_scanner_thread.join().unwrap();
 }
 
 fn main() {
