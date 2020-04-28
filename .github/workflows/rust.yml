@@ -33,11 +33,11 @@ jobs:
         if: matrix.os != 'windows-latest'
         uses: actions/upload-artifact@v2
         with:
-          name: metronome_hub-${{ matrix.os }}-amd64.exe
+          name: metronome_hub-${{ matrix.os }}-amd64
           path: target/release/metronome_hub
       - name: Upload Linux/MacOS artifacts for client
         if: matrix.os != 'windows-latest'
         uses: actions/upload-artifact@v2
         with:
-          name: metronome_client-${{ matrix.os }}-amd64.exe
+          name: metronome_client-${{ matrix.os }}-amd64
           path: target/release/metronome_client
