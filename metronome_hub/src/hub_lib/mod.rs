@@ -13,7 +13,6 @@ pub mod datatypes {
     pub struct ServerConfig {
         pub bind: std::net::SocketAddr,
         pub key: String,
-        pub clocktower: std::net::SocketAddr,
         pub stats_interval: f64,
     }
 

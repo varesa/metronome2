@@ -130,7 +130,7 @@ fn send_stats(stats: ServerSessionStatistics, stats_socket: &std::net::UdpSocket
     }
 }
 
-fn analyzer_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: ServerConfig, analyzer_rx: std::sync::mpsc::Receiver<OriginInfoMessage>, stats_socket: std::net::UdpSocket) {
+fn analyzer_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: ServerConfig, analyzer_rx: std::sync::mpsc::Receiver<OriginInfoMessage>, clocktowers: Vec<std::net::UdpSocket>) {
     let session_data_arced: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<std::string::String, SessionContainer>>> = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
 
     let session_data_arced_inserter = session_data_arced.clone();
@@ -172,12 +172,16 @@ fn analyzer_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, confi
 
                         if session_container.last_rx < session_deadline {
                             session_container.last_stats = current_time;
-                            send_stats(ServerSessionStatistics::from_session_container(session_key, session_container), &stats_socket);
+                            for clocktower in clocktowers.iter() {
+                                send_stats(ServerSessionStatistics::from_session_container(session_key, session_container), &clocktower);
+                            }
                             remove_items.push(session_key.clone());
                         } else {
                             if session_container.last_stats < stats_deadline {
                                 session_container.last_stats = current_time;
-                                send_stats(ServerSessionStatistics::from_session_container(session_key, session_container), &stats_socket);
+                                for clocktower in clocktowers.iter() {
+                                    send_stats(ServerSessionStatistics::from_session_container(session_key, session_container), &clocktower);
+                                }
                             }
                         }
                     }
@@ -216,6 +220,7 @@ fn main() {
             Arg::with_name("clocktower")
                 .short("c")
                 .long("clocktower")
+                .multiple(true)
                 .takes_value(true)
                 .required(true)
         )
@@ -227,15 +232,22 @@ fn main() {
         )
         .get_matches();
     
+    let mut clocktowers: Vec<std::net::UdpSocket> = Vec::new();
+    if let Some(clocktower_strings) = matches.values_of("clocktower") {
+        for clocktower_string in clocktower_strings {
+            let clocktower_address: std::net::SocketAddr = clocktower_string.parse().unwrap();
+            let clocktower_socket = prepare_stats_socket(clocktower_address);
+            clocktowers.push(clocktower_socket);
+        }
+    }
+
     let config = ServerConfig {
         bind: matches.value_of("bind").unwrap().parse().unwrap(),
         key: matches.value_of("key").unwrap().to_string(),
-        clocktower: matches.value_of("clocktower").unwrap().parse().unwrap(),
         stats_interval: matches.value_of("stats_interval").unwrap().parse().unwrap(),
     };
 
     let socket = prepare_client_socket(config.bind);
-    let stats_socket = prepare_stats_socket(config.clocktower);
     let running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
 
     let (receiver_tx, handler_receiver_rx) = std::sync::mpsc::channel();
@@ -266,7 +278,7 @@ fn main() {
     });
 
     let analyzer_thd = std::thread::spawn(move || {
-        analyzer_thread(running_analyzer, config_analyzer, analyzer_rx, stats_socket)
+        analyzer_thread(running_analyzer, config_analyzer, analyzer_rx, clocktowers)
     });
 
     receiver_thd.join().unwrap();

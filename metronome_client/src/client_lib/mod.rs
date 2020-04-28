@@ -210,7 +210,6 @@ pub mod datatypes {
         pub use_sleep: bool,
         pub balance: f32,
         pub remote: std::net::SocketAddr,
-        pub clocktower: std::net::SocketAddr,
         pub key: String,
         pub sid: String,
         pub stats_interval: f64,

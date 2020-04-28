@@ -122,7 +122,7 @@ fn send_stats(stats: ClientSessionStatistics, clocktower_socket: &std::net::UdpS
     }
 }
 
-fn stats_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: ClientConfig, clocktower_socket: std::net::UdpSocket, tx_stats_rx: std::sync::mpsc::Receiver<RTTMeasurement>, rx_stats_rx: std::sync::mpsc::Receiver<TimestampedMessage>, _pps_updater: single_value_channel::Updater<u64>) {
+fn stats_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: ClientConfig, clocktowers: Vec<std::net::UdpSocket>, tx_stats_rx: std::sync::mpsc::Receiver<RTTMeasurement>, rx_stats_rx: std::sync::mpsc::Receiver<TimestampedMessage>, _pps_updater: single_value_channel::Updater<u64>) {
     let mut tracker: std::collections::HashMap<u64, RTTMeasurement> = std::collections::HashMap::new();
     let mut stats: ClientSessionTracker = ClientSessionTracker::new();
     let mut last_scan: f64 = 0.0;
@@ -161,7 +161,9 @@ fn stats_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: 
             }
             last_scan = current_timestamp;
             something_done = true;
-            send_stats(ClientSessionStatistics::from_session_tracker(current_timestamp, &config.sid, &stats), &clocktower_socket);
+            for clocktower_socket in clocktowers.iter() {
+                send_stats(ClientSessionStatistics::from_session_tracker(current_timestamp, &config.sid, &stats), &clocktower_socket);
+            }
         }
 
         if !something_done {
@@ -211,6 +213,7 @@ fn main() {
             Arg::with_name("clocktower")
                 .short("c")
                 .long("clocktower")
+                .multiple(true)
                 .takes_value(true)
                 .required(true)
         )
@@ -236,13 +239,21 @@ fn main() {
         )
         .get_matches();
 
+    let mut clocktowers: Vec<std::net::UdpSocket> = Vec::new();
+    if let Some(clocktower_strings) = matches.values_of("clocktower") {
+        for clocktower_string in clocktower_strings {
+            let clocktower_address: std::net::SocketAddr = clocktower_string.parse().unwrap();
+            let clocktower_socket = prepare_connect_socket(clocktower_address);
+            clocktowers.push(clocktower_socket);
+        }
+    }
+
     let config = ClientConfig {
         pps_limit: matches.value_of("pps-max").unwrap().parse().unwrap(),
         payload_size: matches.value_of("payload-size").unwrap().parse().unwrap(),
         use_sleep: matches.is_present("use-sleep"),
         balance: matches.value_of("balance").unwrap().parse().unwrap(),
         remote: matches.value_of("remote").unwrap().parse().unwrap(),
-        clocktower: matches.value_of("clocktower").unwrap().parse().unwrap(),
         key: matches.value_of("key").unwrap().to_string(),
         sid: matches.value_of("session_id").unwrap().to_string(),
         stats_interval: matches.value_of("stats_interval").unwrap().parse().unwrap(),
@@ -251,7 +262,6 @@ fn main() {
     let running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
     
     let hub_socket = prepare_connect_socket(config.remote);
-    let clocktower_socket = prepare_connect_socket(config.clocktower);
 
     let hub_rx_socket = hub_socket.try_clone().unwrap();
     let hub_tx_socket = hub_socket.try_clone().unwrap();
@@ -276,7 +286,7 @@ fn main() {
     });
 
     let stats_thd = std::thread::spawn(move || {
-        stats_thread(running_stats, config_stats, clocktower_socket, tx_stats_rx, rx_stats_rx, pps_updater);
+        stats_thread(running_stats, config_stats, clocktowers, tx_stats_rx, rx_stats_rx, pps_updater);
     });
 
     tx_thd.join().unwrap();
