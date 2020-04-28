@@ -14,5 +14,20 @@ jobs:
         os: [windows-latest, ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v2
-      - name: Build
-        run: cargo build --release --verbose
+      - run: cargo build --release --verbose
+      - uses: actions/upload-artifact@v2
+        with:
+          name: metronome_hub.exe
+          path: target/release/metronome_hub.exe
+      - uses: actions/upload-artifact@v2
+        with:
+          name: metronome_hub
+          path: target/release/metronome_hub
+      - uses: actions/upload-artifact@v2
+        with:
+          name: metronome_client.exe
+          path: target/release/metronome_client.exe
+      - uses: actions/upload-artifact@v2
+        with:
+          name: metronome_client
+          path: target/release/metronome_client
