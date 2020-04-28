@@ -15,19 +15,29 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - run: cargo build --release --verbose
-      - uses: actions/upload-artifact@v2
+
+      - name: Upload Windows artifacts for hub
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v2
         with:
-          name: metronome_hub.exe
+          name: metronome_hub-${{ matrix.os }}-amd64.exe
           path: target/release/metronome_hub.exe
-      - uses: actions/upload-artifact@v2
+      - name: Upload Windows artifacts for client
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v2
         with:
-          name: metronome_hub
-          path: target/release/metronome_hub
-      - uses: actions/upload-artifact@v2
-        with:
-          name: metronome_client.exe
+          name: metronome_client-${{ matrix.os }}-amd64.exe
           path: target/release/metronome_client.exe
-      - uses: actions/upload-artifact@v2
+
+      - name: Upload Linux/MacOS artifacts for hub
+        if: matrix.os != 'windows-latest'
+        uses: actions/upload-artifact@v2
         with:
-          name: metronome_client
+          name: metronome_hub-${{ matrix.os }}-amd64.exe
+          path: target/release/metronome_hub
+      - name: Upload Linux/MacOS artifacts for client
+        if: matrix.os != 'windows-latest'
+        uses: actions/upload-artifact@v2
+        with:
+          name: metronome_client-${{ matrix.os }}-amd64.exe
           path: target/release/metronome_client
