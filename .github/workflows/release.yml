@@ -98,11 +98,15 @@ jobs:
       - name: compress linux artifact as tar.gz
         run: |
           cd metronome-linux-amd64
+          chmod +x metronome/metronome_hub
+          chmod +x metronome/metronome_client
           tar -zcf metronome-linux-amd64.tar.gz metronome
 
       - name: compress macos artifact as tar.gz
         run: |
           cd metronome-macos-amd64
+          chmod +x metronome/metronome_hub
+          chmod +x metronome/metronome_client
           tar -zcf metronome-macos-amd64.tar.gz metronome
 
       - name: release windows binaries
