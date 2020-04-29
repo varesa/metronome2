@@ -1,0 +1,69 @@
+name: build
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+
+  release_build_windows:
+    name: windows-latest
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v2
+      - run: cargo build --release
+
+      - name: create directory
+        run: |
+          mkdir artifacts
+          mkdir artifacts/metronome
+          cp target/release/metronome_hub.exe artifacts/metronome/metronome_hub.exe
+          cp target/release/metronome_client.exe artifacts/metronome/metronome_client.exe
+
+      - name: upload windows artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: metronome-windows-amd64
+          path: artifacts
+
+  release_build_linux:
+    name: ubuntu-latest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - run: cargo build --release
+
+      - name: create directory
+        run: |
+          mkdir artifacts
+          mkdir artifacts/metronome
+          cp target/release/metronome_hub artifacts/metronome/metronome_hub
+          cp target/release/metronome_client artifacts/metronome/metronome_client
+
+      - name: upload linux artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: metronome-linux-amd64
+          path: artifacts
+
+  release_build_macos:
+    name: macos-latest
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v2
+      - run: cargo build --release
+
+      - name: create directory
+        run: |
+          mkdir artifacts
+          mkdir artifacts/metronome
+          cp target/release/metronome_hub artifacts/metronome/metronome_hub
+          cp target/release/metronome_client artifacts/metronome/metronome_client
+
+      - name: upload macos artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: metronome-macos-amd64
+          path: artifacts
+

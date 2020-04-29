@@ -1,0 +1,127 @@
+name: release
+on:
+  release:
+    types:
+      - created
+      - rerequested
+
+jobs:
+  release_build_windows:
+    name: windows-latest
+    runs-on: windows-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.ref }}
+
+      - run: cargo build --release
+
+      - name: create directory
+        run: |
+          mkdir metronome-windows-amd64
+          mkdir metronome-windows-amd64/metronome
+          cp target/release/metronome_hub.exe metronome-windows-amd64/metronome/metronome_hub.exe
+          cp target/release/metronome_client.exe metronome-windows-amd64/metronome/metronome_client.exe
+
+      - name: upload windows artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: metronome-windows-amd64
+          path: metronome-windows-amd64
+
+  release_build_linux:
+    name: ubuntu-latest
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.ref }}
+
+      - run: cargo build --release
+
+      - name: create directory
+        run: |
+          mkdir metronome-linux-amd64
+          mkdir metronome-linux-amd64/metronome
+          cp target/release/metronome_hub metronome-linux-amd64/metronome/metronome_hub
+          cp target/release/metronome_client metronome-linux-amd64/metronome/metronome_client
+
+      - name: upload linux artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: metronome-linux-amd64
+          path: metronome-linux-amd64
+
+  release_build_macos:
+    name: macos-latest
+    runs-on: macos-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.ref }}
+
+      - run: cargo build --release
+
+      - name: create directory
+        run: |
+          mkdir metronome-macos-amd64
+          mkdir metronome-macos-amd64/metronome
+          cp target/release/metronome_hub metronome-macos-amd64/metronome/metronome_hub
+          cp target/release/metronome_client metronome-macos-amd64/metronome/metronome_client
+
+      - name: upload macos artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: metronome-macos-amd64
+          path: metronome-macos-amd64
+
+  release_do_release:
+    needs:
+      - release_build_windows
+      - release_build_linux
+      - release_build_macos
+    name: do-release
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: download artifacts
+        uses: actions/download-artifact@v2
+
+      - name: compress windows artifact as zip
+        run: |
+          cd metronome-windows-amd64
+          zip -r metronome-windows-amd64.zip metronome
+
+      - name: compress linux artifact as tar.gz
+        run: |
+          cd metronome-linux-amd64
+          tar -zcf metronome-linux-amd64.tar.gz metronome
+
+      - name: compress macos artifact as tar.gz
+        run: |
+          cd metronome-macos-amd64
+          tar -zcf metronome-macos-amd64.tar.gz metronome
+
+      - name: release windows binaries
+        uses: skx/github-action-publish-binaries@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: 'metronome-windows-amd64/metronome-windows-amd64.zip'
+
+      - name: release linux binaries
+        uses: skx/github-action-publish-binaries@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: 'metronome-linux-amd64/metronome-linux-amd64.tar.gz'
+
+      - name: release macos binaries
+        uses: skx/github-action-publish-binaries@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: 'metronome-macos-amd64/metronome-macos-amd64.tar.gz'
