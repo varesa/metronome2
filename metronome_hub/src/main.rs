@@ -79,11 +79,16 @@ fn receiver_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, confi
 }
 
 fn responder_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, _config: ServerConfig, socket: std::net::UdpSocket, responder_rx: std::sync::mpsc::Receiver<WrappedSerializedMessage>) {
+    let mut last_send_error_printed: f64 = 0.0;
     while running.load(std::sync::atomic::Ordering::Relaxed) {
         if let Ok(wrapped_message) = responder_rx.recv_timeout(std::time::Duration::from_millis(SLEEP_TIME)) {
             loop {
                 if let Err(e) = socket.send_to(&wrapped_message.serialized_message, wrapped_message.addr) {
-                    eprintln!("failed to sendto() to metronome_client {}: {}", wrapped_message.addr, e);
+                    let current_time = metronome_lib::util::get_timestamp();
+                    if (current_time - last_send_error_printed) > 10.0 { 
+                        eprintln!("failed to sendto() to metronome_client {}: {}", wrapped_message.addr, e);
+                        last_send_error_printed = current_time;
+                    }
                 } else {
                     break;
                 }

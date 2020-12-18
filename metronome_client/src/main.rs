@@ -48,6 +48,7 @@ fn tx_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: Cli
         sid: config.sid,
     };
     let mut pps_sleeptime: f64;
+    let mut last_send_error_printed: f64 = 0.0;
     while running.load(std::sync::atomic::Ordering::Relaxed) {
         pps_sleeptime = 1.0/(*target_pps.latest() as f64);
         let current_time = metronome_lib::util::get_timestamp();
@@ -59,7 +60,10 @@ fn tx_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: Cli
                 match msg.as_vec() {
                     Ok(serialized) => {
                         if let Err(e) = tx_socket.send(&serialized) {
-                            eprintln!("failed to send message to hub: {}", e);
+                            if (current_time - last_send_error_printed) > 10.0 {
+                                eprintln!("failed to send message to hub: {}", e);
+                                last_send_error_printed = current_time;
+                            }
                         } else {
                             let rttmeas = RTTMeasurement {
                                 seq: msg_seq,
