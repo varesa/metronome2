@@ -10,7 +10,7 @@ use hub_lib::datatypes::{ServerConfig, WrappedSerializedMessage, ServerSessionSt
 
 
 const SLEEP_TIME: u64 = 100;
-const TIMEOUT_SECONDS: f64 = 5.0;
+const TIMEOUT_SECONDS: f64 = (7*24*60*60) as f64;
 const HOLE_TIMEOUT_SECONDS: f64 = 1.0;
 
 

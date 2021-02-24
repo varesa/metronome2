@@ -14,7 +14,7 @@ parser.add_argument('-e', '--exporter-port', required=False, help='bind port for
 args = parser.parse_args()
 
 
-SESSION_TIMEOUT = 10.0
+SESSION_TIMEOUT = 7*24*60*60.0
 
 hub_sessions = {}
 hub_sessions_lock = threading.Lock()
