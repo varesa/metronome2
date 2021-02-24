@@ -65,16 +65,15 @@ fn tx_thread(running: std::sync::Arc<std::sync::atomic::AtomicBool>, config: Cli
                                 eprintln!("failed to send message to hub: {}", e);
                                 last_send_error_printed = current_time;
                             }
-                        } else {
-                            let rttmeas = RTTMeasurement {
-                                seq: msg_seq,
-                                timestamp: current_time,
-                            };
-                            if let Err(e) = tx_stats_tx.send(rttmeas) {
-                                eprintln!("failed to send RTT measurement to stats thread: {}", e);
-                            }
-                            msg_seq += 1;
                         }
+                        let rttmeas = RTTMeasurement {
+                            seq: msg_seq,
+                            timestamp: current_time,
+                        };
+                        if let Err(e) = tx_stats_tx.send(rttmeas) {
+                            eprintln!("failed to send RTT measurement to stats thread: {}", e);
+                        }
+                        msg_seq += 1;
                     },
                     Err(e) => {
                         eprintln!("failed to serialize MetronomeMessage for transmission: {}", e);
